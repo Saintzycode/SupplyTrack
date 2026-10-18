@@ -1,0 +1,21 @@
+# --- OS junk (Windows) ---
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# --- Editors / IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+
+# --- XAMPP / server runtime artifacts ---
+*.log
+error_log*
+php_errorlog*
+
+# --- Temp / backup files ---
+*.tmp
+*~
+_private/

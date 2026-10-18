@@ -1,0 +1,2 @@
+# Block direct web access to include files (Apache 2.4 / XAMPP)
+Require all denied

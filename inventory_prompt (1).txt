@@ -1,0 +1,134 @@
+You are helping me build a Web-Based Inventory Management System for a School Supplies Distributor. Use the goals, requirements, and database below as the source of truth. Do not redesign the database; build around it.
+
+TECH STACK
+HTML, CSS, PHP (PDO), MySQL (managed via phpMyAdmin). Single warehouse. Single currency (PHP ₱). Three-tier architecture.
+Use Bootstrap 5 via CDN for the UI. Do not use Laravel or any PHP framework; use plain PHP with PDO.
+
+USER ROLES
+- Administrator: full access (users, items, suppliers, schools, inventory, distribution, reports).
+- Staff / Inventory Clerk: stock-in, stock-out, and distribution transactions only.
+
+SYSTEM GOALS
+1. Provide real-time visibility of available school-supply inventory.
+2. Reduce stock-outs and overstocking through low-stock and reorder-point monitoring.
+3. Maintain accurate records of stock-in, stock-out, and adjustment transactions.
+4. Maintain organized supplier information to support replenishment.
+5. Maintain records of schools/customers receiving or purchasing supplies.
+6. Record and monitor the distribution of supplies to each school.
+7. Generate inventory, stock transaction, and distribution reports for decision-making.
+
+FUNCTIONAL REQUIREMENTS
+Authentication and Accounts
+- FR-1.1 Login with unique username/email and password (High)
+- FR-1.2 Two roles (Admin, Staff) with role-based access (High)
+- FR-1.3 Admin can create, edit, deactivate, delete Staff accounts (High)
+- FR-1.4 Lock account for a configurable period after 5 failed logins (Medium)
+- FR-1.5 Admin can change own password in-system (Medium)
+- FR-1.6 Staff have no self-service password change; Admin resets it in-system, no external email provider (Medium)
+- FR-1.7 Auto-logout after inactivity, default 30 minutes (Low)
+
+Item Management
+- FR-2.1 Admin adds items: SKU, name, description, category, unit of measure, reorder point, unit cost (High)
+- FR-2.2 Admin edits or soft-deletes items; deactivated items excluded from new transactions but kept in history (High)
+- FR-2.3 Prevent duplicate SKU with validation error (High)
+- FR-2.4 Group and filter items by category (Medium)
+- FR-2.5 Show real-time on-hand quantity per item (High)
+
+Stock Transactions
+- FR-3.1 Staff record stock-in: item, quantity, supplier, date, remarks (High)
+- FR-3.2 Staff record stock-out: item, quantity, reason, date (High)
+- FR-3.3 Block stock-out that would make on-hand quantity negative (High)
+- FR-3.4 Auto-update on-hand quantity on every stock-in/out (High)
+- FR-3.5 Timestamped, non-editable transaction history/audit trail (Medium)
+- FR-3.6 Auto low-stock alert when quantity <= reorder point (High)
+
+Supplier Management
+- FR-4.1 Admin adds, edits, deactivates suppliers: company, contact person, phone, email, address, payment terms (High)
+- FR-4.2 Items can have one or more preferred suppliers (Medium)
+- FR-4.3 Supplier profile shows associated items (Low)
+
+School / Customer Management
+- FR-5.1 Admin adds, edits, deactivates schools: name, contact person, phone, email, address (High)
+- FR-5.2 Prevent duplicate school names (Medium)
+- FR-5.3 School profile shows its distribution transactions (Low)
+
+Distribution Management
+- FR-6.1 Staff record distribution: school, item(s), quantity, date, remarks (High)
+- FR-6.2 Distribution counts as a stock-out and reduces on-hand quantity (High)
+- FR-6.3 Block distribution exceeding available on-hand quantity (High)
+- FR-6.4 Per-school distribution history: date, items, quantities, recording Staff (Medium)
+
+Reporting and Dashboard
+- FR-7.1 Dashboard: total active items, items at/below reorder point, transactions this week (Medium)
+- FR-7.2 Stock Status report: item, on-hand, reorder point, status (Normal/Low) (Medium)
+- FR-7.3 Stock Transaction report filterable by date range, item, type (Medium)
+- FR-7.4 Distribution report filterable by date range, school, item (Medium)
+- FR-7.5 Export reports to CSV or PDF (Low)
+
+NON-FUNCTIONAL REQUIREMENTS
+Performance
+- NFR-1.1 Pages load within 3 seconds under normal load (High)
+- NFR-1.2 Support at least 20 concurrent users (Medium)
+- NFR-1.3 Stock updates reflected within 2 seconds (Medium)
+
+Security
+- NFR-3.1 Hash passwords with a one-way hash (bcrypt), never plain text (High)
+- NFR-3.2 Enforce role-based access, including against direct URL access (High)
+- NFR-3.3 Log stock adjustments and distributions with timestamp and user identity (Medium)
+- NFR-3.4 All client-server traffic over HTTPS/TLS (High)
+
+Quality Attributes
+- Usability: new Staff can complete a stock-in within 5 minutes without help
+- Reliability: at least 99% availability during business hours
+- Maintainability: modular architecture separating data, logic, and presentation
+- Portability: works on latest Chrome, Firefox, Edge without browser-specific code
+- Scalability: supports 10,000 items and 50,000 transactions without redesign
+- Auditability: all create/update/adjust actions traceable to user and date/time
+
+Safety (data integrity): no negative stock, no duplicate SKUs.
+
+UI: consistent navigation (Dashboard, Inventory, Suppliers, Schools, Distribution, Reports, Admin); inline form validation; responsive from 1024px up (768px tablet is should-have).
+
+OUT OF SCOPE
+POS, accounting/general ledger, formal purchase orders, bid/quotation management, per-school order and delivery history, e-commerce integration, multi-warehouse, external email/SMTP.
+
+DATABASE (MySQL, database name: inventory_db, engine InnoDB, utf8mb4)
+Tables (PK = primary key, FK = foreign key):
+- users(user_id PK, full_name, username UNIQUE, email UNIQUE, password_hash, role ENUM('admin','staff'), is_active, failed_attempts, locked_until, last_login, created_at, updated_at)
+- categories(category_id PK, category_name UNIQUE, description)
+- suppliers(supplier_id PK, company_name, contact_person, phone, email, address, payment_terms, is_active, created_at, updated_at)
+- items(item_id PK, sku UNIQUE, item_name, description, category_id FK, unit_of_measure, reorder_point, unit_cost, quantity_on_hand CHECK >= 0, is_active, created_at, updated_at)
+- item_suppliers(item_id FK, supplier_id FK) composite PK, many-to-many
+- schools(school_id PK, school_name UNIQUE, contact_person, phone, email, address, is_active, created_at, updated_at)
+- distributions(distribution_id PK, school_id FK, distribution_date, remarks, recorded_by FK users, created_at)
+- distribution_items(distribution_item_id PK, distribution_id FK, item_id FK, quantity > 0)
+- stock_transactions(transaction_id PK, item_id FK, transaction_type ENUM('stock_in','stock_out','adjustment'), quantity_change signed INT, quantity_after, supplier_id FK nullable, distribution_item_id FK nullable, reason, remarks, transaction_date, created_by FK users, created_at)
+- low_stock_alerts(alert_id PK, item_id FK, quantity_at_alert, reorder_point, is_resolved, created_at, resolved_at)
+- audit_logs(log_id PK, user_id FK nullable, action, table_name, record_id, details, ip_address, created_at)
+
+Relationships: categories 1-M items; items M-M suppliers (via item_suppliers); items 1-M stock_transactions; schools 1-M distributions; distributions 1-M distribution_items; items 1-M distribution_items; users 1-M stock_transactions, distributions, audit_logs; items 1-M low_stock_alerts.
+
+Database triggers already handle these rules (do not duplicate them in PHP):
+- BEFORE INSERT on stock_transactions: rejects inactive items, rejects any change that would make stock negative (SQLSTATE 45000 with a readable message), and sets quantity_after.
+- AFTER INSERT on stock_transactions: updates items.quantity_on_hand, creates a low_stock_alerts row when quantity <= reorder_point, and resolves open alerts when quantity goes back above it.
+- UPDATE and DELETE on stock_transactions are blocked (non-editable audit trail).
+- AFTER INSERT on distribution_items: automatically inserts a stock_out row into stock_transactions (negative quantity_change, linked by distribution_item_id).
+
+Views already available:
+- v_stock_status (FR-7.2), v_stock_transaction_report (FR-7.3), v_distribution_report (FR-7.4, FR-5.3, FR-6.4), v_dashboard_summary (FR-7.1).
+
+PHP coding rules:
+- Use PDO with prepared statements and ERRMODE_EXCEPTION.
+- Never update items.quantity_on_hand directly. Insert into stock_transactions instead.
+- stock_in uses a positive quantity_change; stock_out uses a negative one; adjustment can be either (not zero).
+- To record a distribution: in one PDO transaction, insert the distributions row, then each distribution_items row. Roll back on any exception.
+- Catch PDOException for SQLSTATE 45000 and show its message to the user as a friendly error.
+- Hash passwords with password_hash(PASSWORD_BCRYPT) and check with password_verify().
+- Handle login lockout (5 failed attempts using failed_attempts and locked_until) and the 30-minute inactivity logout in PHP.
+- Write to audit_logs from PHP for create/update/delete/login/password-reset actions.
+- Check the user's role on every admin-only page (not only in the menu).
+- Keep code modular (config, db connection, models/functions, views) and copy-paste ready with file names.
+- Use Bootstrap 5 (CDN) for all pages: navbar, tables, forms, modals, alerts. No Laravel or other PHP framework; plain PHP with PDO only.
+
+TASK
+[Write what you want here, e.g., "Create config.php, the PDO connection, and the login page with lockout and role-based redirect."]
