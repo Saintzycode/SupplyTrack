@@ -23,6 +23,8 @@ A web-based inventory management system for a school supplies distributor (singl
 ## 4. Folder structure
 ```
 InventorySystem/
+├── README.md            Project overview, features, stack
+├── SETUP.md             Install + move-to-another-device guide
 ├── index.php            Dashboard
 ├── login.php            Sign in
 ├── logout.php           Sign out
@@ -40,7 +42,6 @@ InventorySystem/
 ├── reports.php          Reports (admin only): 3 tabs, period presets, filters, pagination
 ├── report_export.php    PDF / Excel export for reports (admin only)
 ├── admin.php            User management, own password, low-stock alerts (admin only)
-├── inventory_db.sql     Database script
 ├── config/config.php    Constants (DB, lockout, timeout)
 ├── config/database.php  db() returns the shared PDO
 ├── includes/functions.php  e(), url(), redirect(), flash(), csrf_*(), money(), fmt_date(), fmt_datetime()
