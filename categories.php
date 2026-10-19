@@ -99,7 +99,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('categories.php');
     }
 
-    redirect('categories.php');
+    if ($action !== 'save') {
+        redirect('categories.php');
+    }
 }
 
 // ---- List with item counts ----
