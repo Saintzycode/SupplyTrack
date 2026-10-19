@@ -34,6 +34,7 @@ InventorySystem/
 ├── categories.php       Item categories list + add / edit / delete-unused (admin only)
 ├── stock_in.php         Record stock-in
 ├── stock_out.php        Record stock-out
+├── adjustment.php       Record a stock adjustment (+/-, reason; admin only)
 ├── suppliers.php        Supplier list (admin only)
 ├── supplier_form.php    Add / edit supplier + its items (admin only)
 ├── schools.php          School list (admin only)
@@ -117,7 +118,7 @@ Key columns:
 ## 8. Requirements reference (condensed)
 **Items:** admin adds and edits items (SKU, name, description, category, unit, reorder point, unit cost); soft-delete; duplicate SKU blocked; filter and group by category; show real-time on-hand quantity.
 **Categories (admin):** `categories.php` lists categories with their item counts and lets an admin add, rename and delete a category. `category_name` is UNIQUE (duplicate shows an inline error). A category can only be deleted while no item references it; otherwise the delete is blocked with a friendly message. No deactivate (the table has no `is_active`), so deleting an unused category is the only removal. Every create, edit and delete is audit-logged.
-**Stock:** staff record stock-in (item, quantity, supplier, date, remarks) and stock-out (item, quantity, reason, date); negative stock blocked; low-stock alert automatic; adjustments logged with user and time.
+**Stock:** staff record stock-in (item, quantity, supplier, date, remarks) and stock-out (item, quantity, reason, date); negative stock blocked; low-stock alert automatic; adjustments (increase/decrease with a reason, `adjustment.php`, admin only) logged with user and time.
 **Suppliers (admin):** company, contact person, phone, email, address, payment terms; deactivate; items can have several preferred suppliers; supplier profile lists its items.
 **Schools (admin):** name (unique), contact person, phone, email, address; deactivate; school profile lists its distributions.
 **Distribution (staff and admin):** choose school, add one or more item lines with quantities, date, remarks; counts as stock-out; blocked if it exceeds on-hand; per-school history shows date, items, quantities, recording staff.
@@ -126,7 +127,7 @@ Key columns:
 **Non-functional:** pages load within 3 seconds; works on current Chrome, Firefox and Edge; responsive on desktop, tablet and phone (off-canvas sidebar + compact top bar under 992px); supports 10,000 items and 50,000 transactions (so paginate every list, 10 to 25 rows per page).
 
 ## 9. Current status and what to build next
-**Done:** Phase 1 (config, PDO connection, helpers, audit log, authentication with lockout and timeout, role checks, shared layout, login, logout, dashboard, one-time admin setup) and build steps 1–9: `inventory.php`, `item_form.php`, `stock_in.php`, `stock_out.php`, `suppliers.php` / `supplier_form.php`, `schools.php` / `school_form.php`, `distribution.php`, `reports.php` with PDF/Excel export (`report_export.php`, `includes/reports_lib.php`, `includes/pdf.php`), and `admin.php`. Also done: `categories.php` (step 11) - list with item counts, add/rename, delete-unused only (no `is_active` column).
+**Done:** Phase 1 (config, PDO connection, helpers, audit log, authentication with lockout and timeout, role checks, shared layout, login, logout, dashboard, one-time admin setup) and build steps 1–9: `inventory.php`, `item_form.php`, `stock_in.php`, `stock_out.php`, `suppliers.php` / `supplier_form.php`, `schools.php` / `school_form.php`, `distribution.php`, `reports.php` with PDF/Excel export (`report_export.php`, `includes/reports_lib.php`, `includes/pdf.php`), and `admin.php`. Also done: `categories.php` (step 11) - list with item counts, add/rename, delete-unused only (no `is_active` column); and `adjustment.php` - admin-only stock adjustment (increase/decrease with a required reason), reachable from an Inventory row action.
 
 **Reports export:** `report_export.php` (admin only) streams an HTML-table Excel file or a server-drawn PDF via `includes/pdf.php` (`SimplePdf`). Both are built from `includes/reports_lib.php`, which also drives the on-screen tables, so exports always match the screen. Every export writes an `audit_log` row. No Composer, no browser PDF library.
 

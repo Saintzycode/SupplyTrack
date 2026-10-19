@@ -11,6 +11,7 @@ Built with plain PHP 8 + PDO on XAMPP — **no frameworks, no Composer**.
 **Admin**
 - Dashboard with stock summaries and a "Stock by category" chart
 - Items: add / edit, soft-delete, preferred suppliers, live on-hand quantity
+- Stock adjustments: increase or decrease on-hand with a required reason
 - Categories: add / rename / delete (only while unused)
 - Suppliers and Schools: manage records, view linked items / distribution history
 - Reports: Stock Status, Stock Transactions, Distribution — with period presets,
@@ -70,6 +71,7 @@ InventorySystem/
 ├── categories.php       Categories
 ├── stock_in.php         Record stock-in
 ├── stock_out.php        Record stock-out
+├── adjustment.php       Record a stock adjustment (admin only)
 ├── suppliers.php / supplier_form.php
 ├── schools.php / school_form.php
 ├── distribution.php     Record a distribution

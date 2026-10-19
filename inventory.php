@@ -222,6 +222,16 @@ function inv_page_url(int $p, string $q, int $cat, string $status): string
                                     </button>
                                 <?php endif; ?>
                                 <?php if (is_admin()): ?>
+                                    <?php if ($active): ?>
+                                        <a href="<?= e(url('adjustment.php?item_id=' . (int)$r['item_id'])) ?>"
+                                           class="btn btn-outline-info" title="Stock adjustment" aria-label="Stock adjustment">
+                                            <i class="bi bi-sliders"></i>
+                                        </a>
+                                    <?php else: ?>
+                                        <button type="button" class="btn btn-outline-secondary" disabled title="Item is inactive" aria-label="Stock adjustment">
+                                            <i class="bi bi-sliders"></i>
+                                        </button>
+                                    <?php endif; ?>
                                     <a href="<?= e(url('item_form.php?id=' . (int)$r['item_id'])) ?>"
                                        class="btn btn-outline-secondary" title="Edit item" aria-label="Edit item">
                                         <i class="bi bi-pencil"></i>
