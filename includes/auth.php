@@ -98,6 +98,8 @@ function attempt_login(string $identifier, string $password): array
     $_SESSION['username']      = $user['username'];
     $_SESSION['role']          = $user['role'];
     $_SESSION['last_activity'] = time();
+    // Fresh CSRF token after login, so a leaked pre-login token dies here
+    $_SESSION['csrf'] = bin2hex(random_bytes(32));
 
     audit_log('login', 'users', $uid, null, $uid);
     return ['ok' => true, 'error' => null];

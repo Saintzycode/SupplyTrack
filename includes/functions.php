@@ -76,6 +76,19 @@ function client_ip(): string
     return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 }
 
+/** Whole number 1..1000000 (no leading + or decimals). */
+function valid_qty(mixed $v): bool
+{
+    return is_string($v) && $v !== '' && ctype_digit($v) && (int)$v >= 1 && (int)$v <= 1000000;
+}
+
+/** YYYY-MM-DD round-trip check. */
+function valid_date(string $v): bool
+{
+    $dt = DateTime::createFromFormat('Y-m-d', $v);
+    return $dt !== false && $dt->format('Y-m-d') === $v;
+}
+
 function money($amount): string
 {
     return CURRENCY . number_format((float)$amount, 2);
