@@ -42,31 +42,28 @@ $flashes = get_flashes();
     <title>Sign in | <?= e(APP_NAME) ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link href="<?= e(url('assets/css/style.css')) ?>?v=<?= e(ASSET_VER) ?>" rel="stylesheet">
+  <script data-theme-lock="1">
+    (function(){ document.documentElement.dataset.theme = 'light'; })();
+  </script>
 </head>
 <body>
 <div class="login-wrap">
-    <div class="login-brand">
-        <div class="d-flex align-items-center gap-3">
-            <span class="brand-logo" style="width:44px;height:44px;font-size:1.3rem"><i class="bi bi-box-seam"></i></span>
+    <section class="login-form-panel">
+        <div class="login-logo">
+            <span class="login-mark"><i class="bi bi-box-seam"></i></span>
             <span>
-                <span class="brand-name fs-5"><?= e(APP_NAME) ?></span>
-                <span class="brand-sub">Inventory Management System</span>
+                <span class="login-wordmark"><?= e(APP_NAME) ?></span>
+                <span class="login-tagline">Inventory Management</span>
             </span>
         </div>
-        <div>
-            <h2>Know exactly what is in stock, at all times.</h2>
-            <div class="login-point"><span class="tick"><i class="bi bi-check"></i></span>Real-time stock visibility across all items</div>
-            <div class="login-point"><span class="tick"><i class="bi bi-check"></i></span>Low-stock and reorder-point alerts</div>
-            <div class="login-point"><span class="tick"><i class="bi bi-check"></i></span>Distribution records for every school</div>
-        </div>
-        <small>Single warehouse &nbsp;|&nbsp; Prices in PHP</small>
-    </div>
 
-    <div class="login-form">
-        <div class="login-card">
-            <h1 class="h3 fw-bold mb-1">Welcome back</h1>
-            <p class="text-muted mb-4">Sign in to manage your inventory.</p>
+        <div class="login-center">
+            <h1>Welcome back</h1>
+            <p class="lead">Sign in to manage your inventory.</p>
 
             <?php foreach ($flashes as $f): ?>
                 <div class="alert alert-<?= e($f['type']) ?>"><?= e($f['message']) ?></div>
@@ -79,32 +76,50 @@ $flashes = get_flashes();
                 <?= csrf_field() ?>
                 <div class="mb-3">
                     <label for="identifier" class="form-label">Username or email</label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-white"><i class="bi bi-person"></i></span>
-                        <input type="text" class="form-control" id="identifier" name="identifier"
-                               value="<?= e($identifier) ?>" placeholder="Enter your username" autocomplete="username" required autofocus>
-                    </div>
+                    <input type="text" class="form-control" id="identifier" name="identifier"
+                           value="<?= e($identifier) ?>" placeholder="Enter your username" autocomplete="username" required autofocus>
                 </div>
-                <div class="mb-4">
+                <div class="mb-3">
                     <label for="password" class="form-label">Password</label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-white"><i class="bi bi-lock"></i></span>
+                    <div class="password-wrap">
                         <input type="password" class="form-control" id="password" name="password"
                                placeholder="Enter your password" autocomplete="current-password" required>
-                        <button class="btn btn-outline-secondary" type="button" tabindex="-1"
+                        <button class="pw-toggle" type="button" tabindex="-1"
                                 data-toggle-password="password" aria-label="Show password"><i class="bi bi-eye"></i></button>
                     </div>
                 </div>
-                <button type="submit" class="btn btn-primary w-100 py-2">Sign in</button>
+                <div class="login-help">Forgot password? Ask your admin.</div>
+                <button type="submit" class="login-submit">Sign in</button>
             </form>
 
-            <div class="alert alert-warning small mt-4 mb-2 py-2">
-                <i class="bi bi-lock me-1"></i>Account locks temporarily after <?= (int)MAX_FAILED_ATTEMPTS ?> failed attempts.
-            </div>
-            <div class="small text-muted">Forgot your password? Contact your administrator.</div>
+            <div class="login-note"><i class="bi bi-lock"></i><span>Account locks temporarily after <?= (int)MAX_FAILED_ATTEMPTS ?> failed attempts.</span></div>
         </div>
-    </div>
-</div>
-<script src="<?= e(url('assets/js/password-toggle.js')) ?>?v=<?= e(ASSET_VER) ?>"></script>
+
+        <div class="login-foot">Single warehouse &nbsp;·&nbsp; Prices in PHP</div>
+    </section>
+
+    <aside class="login-hero" aria-hidden="true">
+        <div class="hero-copy">
+            <h2>Know exactly what is on the shelf.</h2>
+            <p>Track stock, catch low items before they run out, and record every distribution to your schools.</p>
+
+            <div class="stock-card">
+                <div class="stock-head"><span>Stock status</span><span>On hand</span></div>
+                <div class="stock-row">
+                    <div><div class="stock-name">Long Coupon</div><div class="stock-cat">Paper Products</div></div>
+                    <span class="badge-soft badge-low">Low</span><span class="stock-qty">0</span>
+                </div>
+                <div class="stock-row">
+                    <div><div class="stock-name">Ballpen Black</div><div class="stock-cat">Writing Supplies</div></div>
+                    <span class="badge-soft badge-normal">Normal</span><span class="stock-qty">50</span>
+                </div>
+                <div class="stock-row">
+                    <div><div class="stock-name">Crayons 16 colors</div><div class="stock-cat">Art Supplies</div></div>
+                    <span class="badge-soft badge-normal">Normal</span><span class="stock-qty">80</span>
+                </div>
+            </div>
+        </div>
+    </aside>
+</div><script src="<?= e(url('assets/js/password-toggle.js')) ?>?v=<?= e(ASSET_VER) ?>"></script>
 </body>
 </html>

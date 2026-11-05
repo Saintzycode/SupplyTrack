@@ -16,7 +16,7 @@ define('APP_NAME', 'SchoolSupply');
 define('APP_SUBTITLE', 'Inventory System');
 define('BASE_URL', '/InventorySystem');   // folder name inside htdocs (no trailing slash)
 define('CURRENCY', '₱');   // PHP sign
-define('ASSET_VER', '10');   // bump (2, 3, ...) whenever CSS changes to bust browser cache
+define('ASSET_VER', '37');   // bump (2, 3, ...) whenever CSS changes to bust browser cache
 
 // ---- Security ----
 define('MAX_FAILED_ATTEMPTS', 5);     // FR-1.4
@@ -26,6 +26,6 @@ define('FORCE_HTTPS', false);         // set true in production (NFR-3.4)
 
 date_default_timezone_set('Asia/Manila');
 
-// Show errors while developing; set to 0 in production
+// Show errors while developing (local); must be 0 in production
 ini_set('display_errors', '1');
 error_reporting(E_ALL);

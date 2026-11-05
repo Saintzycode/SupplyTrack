@@ -58,6 +58,9 @@ $stats = [
         <h1>Dashboard</h1>
         <p>Real-time overview of school-supply inventory.</p>
     </div>
+    <span class="dash-date">
+        <i class="bi bi-calendar3 me-1"></i><?= e(date('l, M d, Y')) ?>
+    </span>
 </div>
 
 <div class="row g-3 mb-4">
@@ -73,6 +76,17 @@ $stats = [
         </div>
     <?php endforeach; ?>
 </div>
+
+<?php if ((int)($summary['low_stock_items'] ?? 0) > 0): ?>
+    <div class="dash-alert">
+        <i class="bi bi-exclamation-circle-fill"></i>
+        <span>
+            <strong><?= number_format((int)$summary['low_stock_items']) ?></strong> item<?= (int)$summary['low_stock_items'] === 1 ? '' : 's' ?>
+            at or below reorder point.
+            <a href="<?= e(url('items/inventory.php?status=Low')) ?>">Review them</a>
+        </span>
+    </div>
+<?php endif; ?>
 
 <div class="card-ui mb-4">
     <div class="card-head">
@@ -93,7 +107,7 @@ $stats = [
         <div class="card-ui">
             <div class="card-head">
                 <h2>Items at or below reorder point</h2>
-                <?php if (is_admin()): ?><a href="<?= e(url('reports.php?tab=stock')) ?>" class="small fw-semibold text-decoration-none">View stock status</a><?php endif; ?>
+                <?php if (is_admin()): ?><a href="<?= e(url('reports/reports.php?tab=stock')) ?>" class="small fw-semibold text-decoration-none">View stock status</a><?php endif; ?>
             </div>
             <div class="table-responsive">
                 <table class="table table-ui">
@@ -121,7 +135,7 @@ $stats = [
         <div class="card-ui">
             <div class="card-head">
                 <h2>Recent transactions</h2>
-                <?php if (is_admin()): ?><a href="<?= e(url('reports.php?tab=transactions')) ?>" class="small fw-semibold text-decoration-none">View all</a><?php endif; ?>
+                <?php if (is_admin()): ?><a href="<?= e(url('reports/reports.php?tab=transactions')) ?>" class="small fw-semibold text-decoration-none">View all</a><?php endif; ?>
             </div>
             <div class="table-responsive">
                 <table class="table table-ui">
