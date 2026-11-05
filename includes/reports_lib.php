@@ -42,24 +42,24 @@ function rep_reports(): array
     ];
 }
 
-/** Shared colour tokens for the PDF and Excel exports (hex). */
+/** Shared colour tokens for the PDF and Excel exports (hex). Mirror docs/design.md. */
 function rep_colors(): array
 {
     return [
-        'title'      => '#2563EB',
-        'muted'      => '#64748B',
-        'headerBg'   => '#0F172A',
+        'title'      => '#0F172A',
+        'muted'      => '#475569',
+        'headerBg'   => '#334155',
         'headerText' => '#FFFFFF',
-        'rowAlt'     => '#F4F6FA',
-        'rowLine'    => '#E2E8F0',
-        'lowText'    => '#DC2626', 'lowBg'  => '#FEE2E2',
-        'okText'     => '#16A34A', 'okBg'   => '#DCFCE7',
-        'outText'    => '#D97706', 'outBg'  => '#FEF3C7',
-        'adjText'    => '#2563EB', 'adjBg'  => '#EAF1FF',
-        'totalBg'    => '#EAF1FF',
-        'text'       => '#1E293B',
+        'rowAlt'     => '#F8FAFC',
+        'rowLine'    => '#E6E8EA',
+        'lowText'    => '#DC2626', 'lowBg'  => '#FEF2F2',
+        'okText'     => '#059669', 'okBg'   => '#F0FDF4',
+        'outText'    => '#D97706', 'outBg'  => '#FFFBEB',
+        'adjText'    => '#065F46', 'adjBg'  => '#E8F5EF',
+        'totalBg'    => '#F1F5F9',
+        'text'       => '#0F172A',
         'neg'        => '#DC2626',
-        'pos'        => '#16A34A',
+        'pos'        => '#059669',
     ];
 }
 

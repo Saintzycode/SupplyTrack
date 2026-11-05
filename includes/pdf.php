@@ -177,16 +177,16 @@ final class SimplePdf
         $cmd = '';
         $cmd .= sprintf(
             "0.8863 0.9098 0.9451 RG 0.5 w %.2F %.2F m %.2F %.2F l S\n",
-            40.0, $this->h - 32, $this->w - 40.0, $this->h - 32
+            40.0, 32.0, $this->w - 40.0, 32.0
         );
         $left  = str_replace(['{page}', '{total}'], [(string)$page, (string)$total], (string)$this->footerLeft);
         $right = str_replace(['{page}', '{total}'], [(string)$page, (string)$total], (string)$this->footerRight);
         if ($left !== '') {
-            $cmd .= $this->cmdText(40.0, $y, $left, 8, $this->footerColor ?? '#64748B', false);
+            $cmd .= $this->cmdText(40.0, $y, $left, 8, $this->footerColor ?? '#475569', false);
         }
         if ($right !== '') {
             $rw = $this->textWidth($right, 8, false);
-            $cmd .= $this->cmdText($this->w - 40.0 - $rw, $y, $right, 8, $this->footerColor ?? '#64748B', false);
+            $cmd .= $this->cmdText($this->w - 40.0 - $rw, $y, $right, 8, $this->footerColor ?? '#475569', false);
         }
         return $cmd;
     }
