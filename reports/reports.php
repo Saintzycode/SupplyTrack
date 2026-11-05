@@ -3,15 +3,15 @@
  * reports.php - Stock Status / Stock Transactions / Distribution (admin only).
  * Screen and exports share includes/reports_lib.php so they always agree.
  */
-require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/../includes/auth.php';
 require_admin();
 
 $pageTitle  = 'Reports';
 $activePage = 'reports';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/../includes/header.php';
 
 $pdo = db();
-require_once __DIR__ . '/includes/reports_lib.php';
+require_once __DIR__ . '/../includes/reports_lib.php';
 
 $tab = $_GET['tab'] ?? 'stock';
 if (!in_array($tab, ['stock', 'transactions', 'distribution'], true)) {
@@ -34,7 +34,7 @@ $periodLocked = $period !== 'custom';
 
 // URL builder that keeps current filters + applies overrides
 function rep_url(array $override): string {
-    return url('reports.php?' . http_build_query(array_merge($_GET, $override)));
+    return url('reports/reports.php?' . http_build_query(array_merge($_GET, $override)));
 }
 
 /* ------------------------------------------------------------------ */
@@ -91,8 +91,8 @@ $exportParams['report'] = $tab;
 if ($tab === 'transactions') { $exportParams['period'] = $period; $exportParams['tx_from'] = $txFrom; $exportParams['tx_to'] = $txTo; }
 if ($tab === 'distribution') { $exportParams['period'] = $period; $exportParams['dist_from'] = $distFrom; $exportParams['dist_to'] = $distTo; }
 
-$pdfUrl = url('report_export.php?' . http_build_query(array_merge($exportParams, ['format' => 'pdf'])));
-$xlsUrl = url('report_export.php?' . http_build_query(array_merge($exportParams, ['format' => 'xls'])));
+$pdfUrl = url('reports/report_export.php?' . http_build_query(array_merge($exportParams, ['format' => 'pdf'])));
+$xlsUrl = url('reports/report_export.php?' . http_build_query(array_merge($exportParams, ['format' => 'xls'])));
 
 function txn_badge_class(string $t): string
 {
@@ -131,7 +131,7 @@ function txn_badge_class(string $t): string
 </ul>
 
 <?php if ($tab === 'stock'): ?>
-    <form class="row g-2 align-items-end mb-3" method="get" action="<?= e(url('reports.php')) ?>">
+    <form class="row g-2 align-items-end mb-3" method="get" action="<?= e(url('reports/reports.php')) ?>">
         <input type="hidden" name="tab" value="stock">
         <div class="col-12 col-md-3">
             <label class="form-label small text-muted mb-0" for="stock_q">Search</label>
@@ -158,7 +158,7 @@ function txn_badge_class(string $t): string
             <button type="submit" class="btn btn-outline-secondary">Apply</button>
         </div>
         <?php if ($stockQ !== '' || $stockStatus !== '' || $stockCat > 0): ?>
-            <div class="col-12"><a href="<?= e(url('reports.php?tab=stock')) ?>" class="small text-decoration-none">Clear filters</a></div>
+            <div class="col-12"><a href="<?= e(url('reports/reports.php?tab=stock')) ?>" class="small text-decoration-none">Clear filters</a></div>
         <?php endif; ?>
     </form>
 
@@ -193,11 +193,11 @@ function txn_badge_class(string $t): string
                 </tbody>
             </table>
         </div>
-        <?php $sumTitle = 'Stock status'; require __DIR__ . '/includes/report_foot.php'; ?>
+        <?php $sumTitle = 'Stock status'; require __DIR__ . '/../includes/report_foot.php'; ?>
     </div>
 
 <?php elseif ($tab === 'transactions'): ?>
-    <form class="row g-2 align-items-end mb-3" method="get" action="<?= e(url('reports.php')) ?>">
+    <form class="row g-2 align-items-end mb-3" method="get" action="<?= e(url('reports/reports.php')) ?>">
         <input type="hidden" name="tab" value="transactions">
         <div class="col-12 col-md-4 col-lg-3">
             <label class="form-label small text-muted mb-0" for="period">Period</label>
@@ -237,7 +237,7 @@ function txn_badge_class(string $t): string
             <button type="submit" class="btn btn-outline-secondary">Apply</button>
         </div>
         <?php if ($period !== 'custom' || $txFrom !== '' || $txTo !== '' || $txItem > 0 || $txType !== ''): ?>
-            <div class="col-12"><a href="<?= e(url('reports.php?tab=transactions')) ?>" class="small text-decoration-none">Clear filters</a></div>
+            <div class="col-12"><a href="<?= e(url('reports/reports.php?tab=transactions')) ?>" class="small text-decoration-none">Clear filters</a></div>
         <?php endif; ?>
     </form>
 
@@ -280,11 +280,11 @@ function txn_badge_class(string $t): string
                 </tbody>
             </table>
         </div>
-        <?php $sumTitle = 'Stock transactions'; require __DIR__ . '/includes/report_foot.php'; ?>
+        <?php $sumTitle = 'Stock transactions'; require __DIR__ . '/../includes/report_foot.php'; ?>
     </div>
 
 <?php else: ?>
-    <form class="row g-2 align-items-end mb-3" method="get" action="<?= e(url('reports.php')) ?>">
+    <form class="row g-2 align-items-end mb-3" method="get" action="<?= e(url('reports/reports.php')) ?>">
         <input type="hidden" name="tab" value="distribution">
         <div class="col-12 col-md-4 col-lg-3">
             <label class="form-label small text-muted mb-0" for="period">Period</label>
@@ -324,7 +324,7 @@ function txn_badge_class(string $t): string
             <button type="submit" class="btn btn-outline-secondary">Apply</button>
         </div>
         <?php if ($period !== 'custom' || $distFrom !== '' || $distTo !== '' || $distSchool > 0 || $distItem > 0): ?>
-            <div class="col-12"><a href="<?= e(url('reports.php?tab=distribution')) ?>" class="small text-decoration-none">Clear filters</a></div>
+            <div class="col-12"><a href="<?= e(url('reports/reports.php?tab=distribution')) ?>" class="small text-decoration-none">Clear filters</a></div>
         <?php endif; ?>
     </form>
 
@@ -356,7 +356,7 @@ function txn_badge_class(string $t): string
                 </tbody>
             </table>
         </div>
-        <?php $sumTitle = 'Distribution'; require __DIR__ . '/includes/report_foot.php'; ?>
+        <?php $sumTitle = 'Distribution'; require __DIR__ . '/../includes/report_foot.php'; ?>
     </div>
 <?php endif; ?>
 
@@ -367,4 +367,4 @@ function txn_badge_class(string $t): string
     });
 })();
 </script>
-<?php require __DIR__ . '/includes/footer.php'; ?>
+<?php require __DIR__ . '/../includes/footer.php'; ?>

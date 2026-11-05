@@ -19,32 +19,41 @@ A web-based inventory management system for a school supplies distributor (singl
 - Do not redesign the database. Build around it.
 - Do not add features outside the scope in section 10.
 - When you finish a page, tell the user exactly how to test it (what to click, what should happen).
+- **Ponytail skill (active):** also follow `skills/ponytail/SKILL.md` — solve each task with the smallest complete change, reuse helpers and patterns already in the codebase, and never cut validation, error handling, security or accessibility. Where it clashes with this file, this file wins.
 
 ## 4. Folder structure
 ```
 InventorySystem/
 ├── README.md            Project overview, features, stack
 ├── SETUP.md             Install + move-to-another-device guide
-├── index.php            Dashboard
-├── login.php            Sign in
+├── AGENTS.md            This guide (project rules for AI/humans)
+├── .gitignore           Ignores DB dumps, logs, editor temp files
+├── index.php            Dashboard (must stay in root - Apache directory index)
+├── login.php            Sign in (stays in root - every auth redirect points here)
 ├── logout.php           Sign out
-├── setup_admin.php      One-time first admin (delete after use)
-├── inventory.php        Item list (search, category/status filter, pagination)
-├── item_form.php        Add / edit item, soft-delete, preferred suppliers (admin only)
-├── categories.php       Item categories list + add / edit / delete-unused (admin only)
-├── stock_in.php         Record stock-in
-├── stock_out.php        Record stock-out
-├── adjustment.php       Record a stock adjustment (+/-, reason; admin only)
-├── suppliers.php        Supplier list (admin only)
-├── supplier_form.php    Add / edit supplier + its items (admin only)
-├── schools.php          School list (admin only)
-├── school_form.php      Add / edit school + its distribution history (admin only)
-├── distribution.php     Record a distribution (school, multi-line items)
-├── reports.php          Reports (admin only): 3 tabs, period presets, filters, pagination
-├── report_export.php    PDF / Excel export for reports (admin only)
-├── admin.php            User management, own password, low-stock alerts (admin only)
+├── items/               Item master data and stock-item pages
+│   ├── inventory.php    Item list (search, category/status filter, pagination)
+│   ├── item_form.php    Add / edit item, soft-delete, preferred suppliers (admin only)
+│   └── categories.php   Categories list + add / edit / delete-unused (admin only)
+├── stock/               Stock movements
+│   ├── stock_in.php     Record stock-in
+│   ├── stock_out.php    Record stock-out
+│   ├── adjustment.php   Stock adjustment (+/-, reason; admin only)
+│   └── distribution.php Record a distribution (school, multi-line items)
+├── partners/            Suppliers and schools
+│   ├── suppliers.php        Supplier list (admin only)
+│   ├── supplier_form.php    Add / edit supplier + its items (admin only)
+│   ├── schools.php          School list (admin only)
+│   └── school_form.php      Add / edit school + its distribution history (admin only)
+├── reports/
+│   ├── reports.php      Reports (admin only): 3 tabs, period presets, filters, pagination
+│   └── report_export.php PDF / Excel export for reports (admin only)
+├── admin/
+│   ├── admin.php        User management, own password, low-stock alerts (admin only)
+│   └── setup_admin.php  One-time first admin (delete after use)
 ├── config/config.php    Constants (DB, lockout, timeout)
 ├── config/database.php  db() returns the shared PDO
+├── config/.htaccess     Deny direct web access
 ├── includes/functions.php  e(), url(), redirect(), flash(), csrf_*(), money(), fmt_date(), fmt_datetime()
 ├── includes/audit.php   audit_log()
 ├── includes/auth.php    attempt_login(), require_login(), require_admin(), is_admin(), current_user()
@@ -57,9 +66,20 @@ InventorySystem/
 ├── includes/.htaccess   Deny direct web access
 ├── assets/css/style.css Custom styles (design tokens as CSS variables)
 ├── assets/js/password-toggle.js  Show / hide password fields
-└── assets/js/clock.js            Live clock in the top bar
+├── assets/js/clock.js            Live clock in the top bar
+├── assets/js/sidebar-toggle.js   Off-canvas sidebar toggle under 992px
+├── assets/js/future-date-warn.js Warns before submitting a future transaction date
+├── assets/js/dashboard-chart.js  Chart.js "Stock by category" chart (index.php only)
+├── database/            SQL dumps + fix scripts (git-ignored, not served)
+└── docs/                design.md (UI reference - read before any visual change), notes
 ```
-New pages go in the project root. Shared PHP logic goes in `includes/`. Use `__DIR__` in every include path.
+Pages live in a feature folder (`items/`, `stock/`, `partners/`, `reports/`, `admin/`); `index.php`, `login.php` and `logout.php` stay in the root. Shared PHP logic goes in `includes/`.
+Two rules when you add or move a page:
+1. **Never hardcode a page path.** Link with `url('stock/stock_in.php')` or `redirect('items/inventory.php')` (folder included), never `href="stock_in.php"`.
+2. A page inside a folder includes shared files with `__DIR__ . '/../includes/...'` (note the `../`); root pages use `__DIR__ . '/includes/...'`.
+Also add the new page to the `$menu` array in `includes/header.php`.
+
+Styling rules, tokens and the component inventory are documented in `docs/design.md` — read it before changing any UI, and update it in the same commit as the visual change.
 
 ## 5. Roles and access
 | Role | Access |

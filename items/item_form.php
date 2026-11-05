@@ -2,12 +2,11 @@
 /**
  * item_form.php - add / edit item (AGENTS.md build step 2; admin only).
  */
-require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/../includes/auth.php';
 require_admin();
 
 $pageTitle  = 'Add item';
 $activePage = 'inventory';
-require_once __DIR__ . '/includes/header.php';
 
 $pdo = db();
 
@@ -38,7 +37,7 @@ if ($editing) {
     $item = $stmt->fetch();
     if (!$item) {
         flash('danger', 'Item not found.');
-        redirect('inventory.php');
+        redirect('items/inventory.php');
     }
     $pageTitle = 'Edit item';
 }
@@ -47,7 +46,7 @@ if ($editing) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_active'])) {
     if (!csrf_verify()) {
         flash('danger', 'Session expired. Try again.');
-        redirect($editing ? "item_form.php?id=$itemId" : 'inventory.php');
+        redirect($editing ? "items/item_form.php?id=$itemId" : 'items/inventory.php');
     }
     $row = $pdo->prepare('SELECT item_name, is_active FROM items WHERE item_id = :id');
     $row->execute([':id' => $itemId]);
@@ -60,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_active'])) {
             ($newState === 0 ? 'Deactivated' : 'Reactivated') . " item: {$r['item_name']}", current_user()['id']);
         flash('success', $newState === 0 ? 'Item deactivated.' : 'Item reactivated.');
     }
-    redirect('inventory.php');
+    redirect('items/inventory.php');
 }
 
 // ---- Sticky form values ----
@@ -224,7 +223,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['toggle_active'])) {
                 } else {
                     flash('success', 'Item created.');
                 }
-                redirect('inventory.php');
+                redirect('items/inventory.php');
             } catch (PDOException $e) {
                 if ($pdo->inTransaction()) { $pdo->rollBack(); }
                 if ($e->getCode() === '23000') {
@@ -245,13 +244,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['suppliers'])) {
         $activeSupplierIds
     ));
 }
+
+require_once __DIR__ . '/../includes/header.php';
 ?>
 <div class="page-head">
     <div>
         <h1><?= $editing ? 'Edit item' : 'Add item' ?></h1>
         <p><?= $editing ? 'Update details, preferred suppliers, or availability.' : 'Create a new inventory item.' ?></p>
     </div>
-    <a href="<?= e(url('inventory.php')) ?>" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back to inventory</a>
+    <a href="<?= e(url('items/inventory.php')) ?>" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back to inventory</a>
 </div>
 
 <?php if (!empty($errors['_form'])): ?>
@@ -347,7 +348,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['suppliers'])) {
                 <?php if ($editing): ?>
                     <p class="mb-2">Status: <strong><?= (int)$item['is_active'] === 1 ? 'Active' : 'Inactive' ?></strong></p>
                     <p class="text-muted small mb-3">On hand: <?= number_format((int)$item['quantity_on_hand']) ?> (read-only, changed by stock transactions)</p>
-                    <button type="submit" formaction="" formmethod="post" name="toggle_active" value="1" class="btn btn-sm <?= (int)$item['is_active'] === 1 ? 'btn-outline-danger' : 'btn-outline-success' ?>">
+                    <button type="submit" name="toggle_active" value="1" onclick="return confirm('<?= e((int)$item['is_active'] === 1 ? 'Do you want to deactivate this item?' : 'Do you want to reactivate this item?') ?>');" class="btn btn-sm <?= (int)$item['is_active'] === 1 ? 'btn-outline-danger' : 'btn-outline-success' ?>">
                         <?= (int)$item['is_active'] === 1 ? 'Deactivate item' : 'Reactivate item' ?>
                     </button>
                 <?php else: ?>
@@ -356,10 +357,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['suppliers'])) {
             </div>
             <div class="d-grid gap-2 mt-3">
                 <button type="submit" class="btn btn-primary py-2"><i class="bi bi-check-lg me-1"></i><?= $editing ? 'Save changes' : 'Create item' ?></button>
-                <a href="<?= e(url('inventory.php')) ?>" class="btn btn-outline-secondary">Cancel</a>
+                <a href="<?= e(url('items/inventory.php')) ?>" class="btn btn-outline-secondary">Cancel</a>
             </div>
         </div>
     </div>
 </form>
 
-<?php require __DIR__ . '/includes/footer.php'; ?>
+<?php require __DIR__ . '/../includes/footer.php'; ?>

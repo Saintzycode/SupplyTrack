@@ -2,11 +2,107 @@
 /**
  * distribution.php - record a distribution to a school (AGENTS.md build step 7).
  */
-$pageTitle  = 'Distribution';
-$activePage = 'distribution';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_login();
 
 $pdo = db();
+
+class StockException extends Exception {}
+
+// ---- Handle POST *before* the page renders (Post/Redirect/Get) ----
+// Read the fields, validate, insert in ONE transaction, then redirect.
+// redirect() must run before any HTML output, so header.php comes *after* this block.
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!csrf_verify()) {
+        flash('danger', 'Session expired. Please try again.');
+        redirect('stock/distribution.php');
+    }
+    $schoolId = (int)($_POST['school_id'] ?? 0);
+    $date = trim($_POST['distribution_date'] ?? '');
+    $remarks = trim($_POST['remarks'] ?? '');
+    $ids = $_POST['items'] ?? [];
+    $qtys = $_POST['quantities'] ?? [];
+    $lines = [];
+    foreach (array_keys($ids) as $i) {
+        $itemId = (int)$ids[$i];
+        $q = trim((string)($qtys[$i] ?? ''));
+        if ($itemId === 0 && $q === '') continue;
+        $lines[] = ['item_id' => $itemId, 'quantity' => $q];
+    }
+    $dest = 'stock/distribution.php' . ($schoolId > 0 ? '?' . http_build_query(['school_id' => $schoolId]) : '');
+
+    $errs = [];
+    $vSchool = $pdo->prepare('SELECT COUNT(*) FROM schools WHERE school_id = :id AND is_active = 1');
+    $vSchool->execute([':id' => $schoolId]);
+    if ((int)$vSchool->fetchColumn() === 0) $errs['school_id'] = 'Select a school.';
+    if (!valid_date($date)) $errs['distribution_date'] = 'Enter a valid date.';
+    if (mb_strlen($remarks) > 255) $errs['remarks'] = 'Remarks must be 255 characters or fewer.';
+    if (!$lines) $errs['lines'] = 'Add at least one item line.';
+
+    $seen = [];
+    foreach ($lines as $ln) {
+        if ($ln['item_id'] <= 0) $errs['item_id'] = 'Select an item.';
+        elseif (in_array($ln['item_id'], $seen, true)) $errs['item_id'] = 'Duplicate item in this distribution.';
+        else $seen[] = $ln['item_id'];
+        if (!valid_qty($ln['quantity'])) {
+            $errs['quantity'] = 'Quantity must be a whole number between 1 and 1,000,000.';
+        }
+    }
+
+    if ($errs) {
+        flash('danger', implode(' ', array_values($errs)));
+        redirect($dest);
+    }
+    try {
+        $pdo->beginTransaction();
+        // Re-check stock for every line inside the transaction (row lock),
+        // so a concurrent distribution cannot oversell.
+        $chk = $pdo->prepare('SELECT quantity_on_hand FROM items WHERE item_id = :id FOR UPDATE');
+        foreach ($lines as $ln) {
+            $chk->execute([':id' => $ln['item_id']]);
+            $avail = (int)$chk->fetchColumn();
+            if ((int)$ln['quantity'] > $avail) {
+                throw new StockException('Insufficient stock. Available: ' . number_format($avail) . '.');
+            }
+        }
+        $insDist = $pdo->prepare(
+            "INSERT INTO distributions (school_id, distribution_date, remarks, recorded_by)
+             VALUES (:s, :d, :r, :by)"
+        );
+        $insDist->execute([
+            ':s' => $schoolId,
+            ':d' => $date . ' 00:00:00',
+            ':r' => $remarks !== '' ? $remarks : null,
+            ':by' => (int)current_user()['id'],
+        ]);
+        $distId = (int)$pdo->lastInsertId();
+        $insLine = $pdo->prepare(
+            "INSERT INTO distribution_items (distribution_id, item_id, quantity)
+             VALUES (:d, :i, :q)"
+        );
+        foreach ($lines as $ln) {
+            $insLine->execute([':d' => $distId, ':i' => (int)$ln['item_id'], ':q' => (int)$ln['quantity']]);
+        }
+        $pdo->commit();
+        audit_log('create', 'distributions', $distId, 'Distribution to school ' . $schoolId . ': ' . count($lines) . ' item(s)', current_user()['id']);
+        flash('success', 'Distribution recorded. Stock reduced for ' . count($lines) . ' item(s).');
+        redirect('stock/distribution.php');
+    } catch (StockException $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        flash('danger', $e->getMessage());
+        redirect($dest);
+    } catch (PDOException $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        $msg = $e->getCode() === '45000' ? ($e->errorInfo[2] ?? $e->getMessage()) : 'Something went wrong while recording the distribution. Please try again.';
+        if ($e->getCode() !== '45000') error_log('distribution insert failed: ' . $e->getMessage());
+        flash('danger', $msg);
+        redirect($dest);
+    }
+}
+
+$pageTitle  = 'Distribution';
+$activePage = 'distribution';
+require_once __DIR__ . '/../includes/header.php';
 
 $schools = $pdo->query(
     'SELECT school_id, school_name, is_active FROM schools WHERE is_active = 1 ORDER BY school_name'
@@ -48,124 +144,8 @@ $errors      = [];
 $lineErrors  = [];
 $submitError = null;
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!csrf_verify()) {
-        $errors['_form'] = 'Session expired. Please try again.';
-    } else {
-        $oldSchool  = (int)($_POST['school_id'] ?? 0);
-        $oldDate    = trim($_POST['distribution_date'] ?? '');
-        $oldRemarks = trim($_POST['remarks'] ?? '');
-        $lines      = posted_lines();
-
-        // validate school
-        $validSchoolIds = array_map('intval', array_column($schools, 'school_id'));
-        if (!in_array($oldSchool, $validSchoolIds, true)) {
-            $errors['school_id'] = 'Select a school.';
-        }
-
-        // validate date
-        $dt = DateTime::createFromFormat('Y-m-d', $oldDate);
-        if ($dt === false || $dt->format('Y-m-d') !== $oldDate) {
-            $errors['distribution_date'] = 'Enter a valid date.';
-        }
-
-        if ($oldRemarks !== '' && mb_strlen($oldRemarks) > 255) {
-            $errors['remarks'] = 'Remarks must be 255 characters or fewer.';
-        }
-
-        // validate lines
-        $seen = [];
-        foreach ($lines as $idx => $ln) {
-            $le = [];
-            if (!in_array($ln['item_id'], $activeItemIds, true)) {
-                $le['item_id'] = 'Select an item.';
-            } elseif (in_array($ln['item_id'], $seen, true)) {
-                $le['item_id'] = 'Duplicate item in this distribution.';
-            }
-            if ($le === [] && $ln['item_id'] > 0) {
-                $seen[] = $ln['item_id'];
-            }
-            if ($ln['quantity'] === '' || !ctype_digit($ln['quantity']) || (int)$ln['quantity'] <= 0) {
-                $le['quantity'] = 'Quantity must be a whole number greater than 0.';
-            }
-            // sufficient-stock pre-check
-            if (!isset($le['quantity']) && isset($ln['item_id']) && in_array($ln['item_id'], $activeItemIds, true)) {
-                $avail = $stockMap[$ln['item_id']] ?? 0;
-                if ((int)$ln['quantity'] > $avail) {
-                    $le['quantity'] = 'Insufficient stock. Available: ' . number_format($avail) . '.';
-                }
-            }
-            if ($le) {
-                $lineErrors[$idx] = $le;
-            }
-        }
-        // require at least one fully-filled line
-        $hasValidLine = false;
-        foreach ($lines as $idx => $ln) {
-            if (empty($lineErrors[$idx]) && $ln['item_id'] > 0 && $ln['quantity'] !== '') {
-                $hasValidLine = true;
-            }
-        }
-        // remove entirely blank rows from consideration? if all blank, error
-        $allBlank = true;
-        foreach ($lines as $ln) {
-            if ($ln['item_id'] > 0 || $ln['quantity'] !== '') { $allBlank = false; break; }
-        }
-        if ($allBlank) {
-            $errors['lines'] = 'Add at least one item line.';
-        }
-        // prune blank trailing rows before saving
-        $saveLines = [];
-        foreach ($lines as $idx => $ln) {
-            if ($ln['item_id'] === 0 && $ln['quantity'] === '') continue;
-            $saveLines[] = $ln;
-        }
-        if ($allBlank) $saveLines = [];
-
-        if (!$errors && !$lineErrors && $saveLines) {
-            try {
-                $pdo->beginTransaction();
-                $insDist = $pdo->prepare(
-                    "INSERT INTO distributions (school_id, distribution_date, remarks, recorded_by)
-                     VALUES (:s, :d, :r, :by)"
-                );
-                $insDist->execute([
-                    ':s'  => $oldSchool,
-                    ':d'  => $oldDate . ' 00:00:00',
-                    ':r'  => $oldRemarks !== '' ? $oldRemarks : null,
-                    ':by' => (int)current_user()['id'],
-                ]);
-                $distId = (int)$pdo->lastInsertId();
-
-                $insLine = $pdo->prepare(
-                    "INSERT INTO distribution_items (distribution_id, item_id, quantity)
-                     VALUES (:d, :i, :q)"
-                );
-                foreach ($saveLines as $ln) {
-                    $insLine->execute([
-                        ':d' => $distId,
-                        ':i' => (int)$ln['item_id'],
-                        ':q' => (int)$ln['quantity'],
-                    ]);
-                }
-                $pdo->commit();
-
-                audit_log('create', 'distributions', $distId,
-                    'Distribution to school ' . $oldSchool . ': ' . count($saveLines) . ' item(s)', current_user()['id']);
-                flash('success', 'Distribution recorded. Stock reduced for ' . count($saveLines) . ' item(s).');
-                redirect('distribution.php');
-            } catch (PDOException $e) {
-                if ($pdo->inTransaction()) { $pdo->rollBack(); }
-                if ($e->getCode() === '45000') {
-                    $submitError = $e->errorInfo[2] ?? $e->getMessage();
-                } else {
-                    error_log('distribution insert failed: ' . $e->getMessage());
-                    $submitError = 'Something went wrong while recording the distribution. Please try again.';
-                }
-            }
-        }
-    }
-}
+// (All POST handling is at the top of this file, before header.php is
+// included — see the Post/Redirect/Get block above.)
 ?>
 <div class="page-head">
     <div>
@@ -187,7 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="row g-4">
     <div class="col-12 col-xl-8">
         <div class="card-ui p-4">
-            <form method="post" novalidate id="distForm">
+            <form method="post" novalidate id="distForm" onsubmit="if(this.dataset.submitted){return false} this.dataset.submitted=1; this.querySelectorAll('button[type=submit]').forEach(function(b){b.disabled=true; b.innerHTML='Saving…';});">
                 <?= csrf_field() ?>
 
                 <div class="row g-3">
@@ -291,7 +271,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <button type="submit" class="btn btn-primary" <?= ($schools && $items) ? '' : 'disabled' ?>>
                         <i class="bi bi-send me-1"></i>Record distribution
                     </button>
-                    <a href="<?= e(url('distribution.php')) ?>" class="btn btn-outline-secondary">Reset</a>
+                    <a href="<?= e(url('stock/distribution.php')) ?>" class="btn btn-outline-secondary">Reset</a>
                 </div>
             </form>
         </div>
@@ -359,4 +339,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 })();
 </script>
 
-<?php require __DIR__ . '/includes/footer.php'; ?>
+<?php require __DIR__ . '/../includes/footer.php'; ?>

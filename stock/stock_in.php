@@ -2,11 +2,76 @@
 /**
  * stock_in.php - record a stock-in transaction (AGENTS.md build step 3).
  */
-$pageTitle  = 'Stock-in';
-$activePage = 'inventory';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_login();
 
 $pdo = db();
+
+// ---- Handle POST *before* the page renders (Post/Redirect/Get) ----
+// Read the fields, validate, insert, then redirect. redirect() must run
+// before any HTML output, so header.php is included *after* this block.
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!csrf_verify()) {
+        flash('danger', 'Session expired. Please try again.');
+        redirect('stock/stock_in.php');
+    }
+    $itemId = (int)($_POST['item_id'] ?? 0);
+    $qty = trim($_POST['quantity'] ?? '');
+    $date = trim($_POST['transaction_date'] ?? '');
+    $supId = (int)($_POST['supplier_id'] ?? 0);
+    $remarks = trim($_POST['remarks'] ?? '');
+    $dest = 'stock/stock_in.php' . ($itemId > 0 ? '?' . http_build_query(['item_id' => $itemId]) : '');
+
+    $errs = [];
+    $valid = $pdo->prepare('SELECT COUNT(*) FROM items WHERE item_id = :id AND is_active = 1');
+    $valid->execute([':id' => $itemId]);
+    if ((int)$valid->fetchColumn() === 0) $errs['item_id'] = 'Select an item.';
+
+    $vSup = $pdo->prepare('SELECT COUNT(*) FROM suppliers WHERE supplier_id = :id AND is_active = 1');
+    $vSup->execute([':id' => $supId]);
+    $supOk = (int)$vSup->fetchColumn() > 0;
+    if ($supId <= 0) $errs['supplier_id'] = 'Select a supplier.';
+    elseif (!$supOk) $errs['supplier_id'] = 'Invalid supplier.';
+
+    if ($qty === '' || !valid_qty($qty)) {
+        $errs['quantity'] = 'Quantity must be a whole number between 1 and 1,000,000.';
+    }
+    if (!valid_date($date)) $errs['transaction_date'] = 'Enter a valid date.';
+    if (mb_strlen($remarks) > 255) $errs['remarks'] = 'Remarks must be 255 characters or fewer.';
+
+    if ($errs) {
+        flash('danger', implode(' ', array_values($errs)));
+        redirect($dest);
+    }
+    try {
+        $stmt = $pdo->prepare(
+            "INSERT INTO stock_transactions
+               (item_id, transaction_type, quantity_change, supplier_id, reason, remarks, transaction_date, created_by)
+             VALUES (:item, 'stock_in', :qty, :sup, NULL, :remarks, :tdate, :by)"
+        );
+        $stmt->execute([
+            ':item' => $itemId,
+            ':qty' => (int)$qty,
+            ':sup' => $supId,
+            ':remarks' => $remarks !== '' ? $remarks : null,
+            ':tdate' => $date . ' 00:00:00',
+            ':by' => (int)current_user()['id'],
+        ]);
+        $newId = (int)$pdo->lastInsertId();
+        audit_log('stock_in', 'stock_transactions', $newId, "Stock-in: item_id {$itemId}, qty {$qty}", current_user()['id']);
+        flash('success', 'Stock-in recorded. On-hand quantity updated.');
+        redirect($dest);
+    } catch (PDOException $e) {
+        $msg = $e->getCode() === '45000' ? ($e->errorInfo[2] ?? $e->getMessage()) : 'Something went wrong. Please try again.';
+        if ($e->getCode() !== '45000') error_log('stock_in insert failed: ' . $e->getMessage());
+        flash('danger', $msg);
+        redirect($dest);
+    }
+}
+
+$pageTitle  = 'Stock-in';
+$activePage = 'inventory';
+require_once __DIR__ . '/../includes/header.php';
 
 // ---- Lookups ----
 $items = $pdo->query(
@@ -36,80 +101,8 @@ $old = [
 $errors = [];
 $submitError = null;
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!csrf_verify()) {
-        $errors['_form'] = 'Session expired. Please try again.';
-    } else {
-        $old['item_id']          = (int)($_POST['item_id'] ?? 0);
-        $old['quantity']         = trim($_POST['quantity'] ?? '');
-        $old['transaction_date'] = trim($_POST['transaction_date'] ?? '');
-        $old['supplier_id']      = (int)($_POST['supplier_id'] ?? 0);
-        $old['remarks']          = trim($_POST['remarks'] ?? '');
-        $selectedItemId          = $old['item_id'];
-
-        // Validate item
-        $validItemIds = array_map('intval', array_column($items, 'item_id'));
-        if (!in_array($old['item_id'], $validItemIds, true)) {
-            $errors['item_id'] = 'Select an item.';
-        }
-
-        // Validate quantity (> 0)
-        if ($old['quantity'] === '' || !ctype_digit($old['quantity']) || (int)$old['quantity'] <= 0) {
-            $errors['quantity'] = 'Quantity must be a whole number greater than 0.';
-        }
-
-        // Validate date
-        $dt = DateTime::createFromFormat('Y-m-d', $old['transaction_date']);
-        if ($dt === false || $dt->format('Y-m-d') !== $old['transaction_date']) {
-            $errors['transaction_date'] = 'Enter a valid date.';
-        }
-
-        // Validate supplier (required, must be an active supplier)
-        $validSupplierIds = array_map('intval', array_column($suppliers, 'supplier_id'));
-        if ($old['supplier_id'] <= 0) {
-            $errors['supplier_id'] = 'Select a supplier.';
-        } elseif (!in_array($old['supplier_id'], $validSupplierIds, true)) {
-            $errors['supplier_id'] = 'Invalid supplier.';
-        }
-
-        if (mb_strlen($old['remarks']) > 255) {
-            $errors['remarks'] = 'Remarks must be 255 characters or fewer.';
-        }
-
-        if (!$errors) {
-            try {
-                $stmt = $pdo->prepare(
-                    "INSERT INTO stock_transactions
-                       (item_id, transaction_type, quantity_change, supplier_id, reason, remarks, transaction_date, created_by)
-                     VALUES
-                       (:item, 'stock_in', :qty, :sup, NULL, :remarks, :tdate, :by)"
-                );
-                $stmt->execute([
-                    ':item'    => $old['item_id'],
-                    ':qty'     => (int)$old['quantity'],
-                    ':sup'     => $old['supplier_id'],
-                    ':remarks' => $old['remarks'] !== '' ? $old['remarks'] : null,
-                    ':tdate'   => $old['transaction_date'] . ' 00:00:00',
-                    ':by'      => (int)current_user()['id'],
-                ]);
-                $newId = (int)$pdo->lastInsertId();
-                audit_log('stock_in', 'stock_transactions', $newId,
-                    "Stock-in: item_id {$old['item_id']}, qty {$old['quantity']}", current_user()['id']);
-                flash('success', 'Stock-in recorded. On-hand quantity updated.');
-                // keep the selected item open in the side panel
-                $qs = http_build_query(['item_id' => $old['item_id']]);
-                redirect('stock_in.php?' . $qs);
-            } catch (PDOException $e) {
-                if ($e->getCode() === '45000') {
-                    $submitError = $e->errorInfo[2] ?? $e->getMessage();
-                } else {
-                    error_log('stock_in insert failed: ' . $e->getMessage());
-                    $submitError = 'Something went wrong while recording the stock-in. Please try again.';
-                }
-            }
-        }
-    }
-}
+// (All POST handling is at the top of this file, before header.php is
+// included — see the Post/Redirect/Get block above.)
 
 // ---- Side-panel data for the selected item ----
 $panelItem     = null;
@@ -145,7 +138,7 @@ if ($selectedItemId > 0) {
         <h1>Stock-in</h1>
         <p>Record incoming stock from a supplier.</p>
     </div>
-    <a href="<?= e(url('inventory.php')) ?>" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back to inventory</a>
+    <a href="<?= e(url('items/inventory.php')) ?>" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back to inventory</a>
 </div>
 
 <?php if ($submitError): ?>
@@ -158,14 +151,14 @@ if ($selectedItemId > 0) {
 <div class="row g-4">
     <div class="col-12 col-xl-8">
         <div class="card-ui p-4">
-            <form method="post" novalidate>
+            <form method="post" onsubmit="if(this.dataset.submitted){return false} this.dataset.submitted=1; this.querySelectorAll('button[type=submit]').forEach(function(b){b.disabled=true; b.innerHTML='Saving…';});">
                 <?= csrf_field() ?>
 
                 <div class="mb-3">
                     <label class="form-label" for="item_id">Item <span class="text-danger">*</span></label>
                     <select class="form-select <?= isset($errors['item_id']) ? 'is-invalid' : '' ?>"
                             id="item_id" name="item_id" required>
-                            <option value="0">Select an item</option>
+                            <option value="">Select an item</option>
                         <?php foreach ($items as $it): ?>
                             <option value="<?= (int)$it['item_id'] ?>" <?= $old['item_id'] === (int)$it['item_id'] ? 'selected' : '' ?>>
                                 <?= e($it['sku'] . ' - ' . $it['item_name']) ?>
@@ -223,7 +216,7 @@ if ($selectedItemId > 0) {
                     <button type="submit" class="btn btn-primary" <?= ($items && $suppliers) ? '' : 'disabled' ?>>
                         <i class="bi bi-plus-lg me-1"></i>Record stock-in
                     </button>
-                    <a href="<?= e(url('stock_in.php')) ?>" class="btn btn-outline-secondary">Reset</a>
+                    <a href="<?= e(url('stock/stock_in.php')) ?>" class="btn btn-outline-secondary">Reset</a>
                 </div>
             </form>
         </div>
@@ -292,11 +285,11 @@ if ($selectedItemId > 0) {
                 <h2 class="h6 fw-bold mb-3">Item summary</h2>
                 <p class="text-muted small mb-2">Open an item to see its details and recent stock-ins.</p>
                 <p class="text-muted small mb-0">
-                    Tip: visit <code>stock_in.php?item_id=1</code> to pre-select an item.
+                    Tip: visit <code>stock/stock_in.php?item_id=1</code> to pre-select an item.
                 </p>
             </div>
         <?php endif; ?>
     </div>
 </div>
 
-<?php require __DIR__ . '/includes/footer.php'; ?>
+<?php require __DIR__ . '/../includes/footer.php'; ?>

@@ -5,7 +5,7 @@
  */
 $pageTitle  = 'Inventory';
 $activePage = 'inventory';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/../includes/header.php';
 
 $pdo = db();
 
@@ -94,7 +94,7 @@ function inv_page_url(int $p, string $q, int $cat, string $status): string
         'category_id' => $cat > 0 ? $cat : null,
         'status'      => $status !== '' ? $status : null,
     ], function ($v) { return $v !== null; }));
-    return url('inventory.php' . ($qs !== '' ? '?' . $qs : ''));
+    return url('items/inventory.php' . ($qs !== '' ? '?' . $qs : ''));
 }
 ?>
 <div class="page-head">
@@ -103,44 +103,56 @@ function inv_page_url(int $p, string $q, int $cat, string $status): string
         <p><?= number_format($total) ?> item<?= $total === 1 ? '' : 's' ?> found.</p>
     </div>
     <?php if (is_admin()): ?>
-        <a href="<?= e(url('item_form.php')) ?>" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add item</a>
+        <a href="<?= e(url('items/item_form.php')) ?>" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add item</a>
     <?php endif; ?>
 </div>
 
+<?php if ($status === 'Low' && $total > 0): ?>
+    <div class="dash-alert">
+        <i class="bi bi-exclamation-circle-fill"></i>
+        <span>
+            <strong><?= number_format($total) ?></strong> item<?= $total === 1 ? '' : 's' ?> at or below reorder point.
+            <a href="<?= e(url('reports/reports.php?tab=stock')) ?>">View stock status</a>
+        </span>
+    </div>
+<?php endif; ?>
+
 <!-- Filter bar -->
-<form class="row g-2 align-items-end mb-3" method="get" action="<?= e(url('inventory.php')) ?>">
-    <div class="col-12 col-md-4">
-        <label class="form-label small text-muted mb-0" for="q">Search</label>
-        <input type="text" class="form-control" id="q" name="q" value="<?= e($q) ?>" placeholder="SKU, name, description, category">
-    </div>
-    <div class="col-6 col-md-3">
-        <label class="form-label small text-muted mb-0" for="category_id">Category</label>
-        <select class="form-select" id="category_id" name="category_id">
-            <option value="0">All categories</option>
-            <?php foreach ($catOpts as $c): ?>
-                <option value="<?= (int)$c['category_id'] ?>" <?= $cat === (int)$c['category_id'] ? 'selected' : '' ?>>
-                    <?= e($c['category_name']) ?>
-                </option>
-            <?php endforeach; ?>
-        </select>
-    </div>
-    <div class="col-6 col-md-3">
-        <label class="form-label small text-muted mb-0" for="status">Status</label>
-        <select class="form-select" id="status" name="status">
-            <option value="" <?= $status === '' ? 'selected' : '' ?>>All</option>
-            <option value="Normal" <?= $status === 'Normal' ? 'selected' : '' ?>>Normal</option>
-            <option value="Low" <?= $status === 'Low' ? 'selected' : '' ?>>Low</option>
-            <option value="Inactive" <?= $status === 'Inactive' ? 'selected' : '' ?>>Inactive</option>
-        </select>
-    </div>
-    <div class="col-12 col-md-2 d-grid">
-        <button type="submit" class="btn btn-outline-secondary">Apply</button>
-    </div>
-    <?php if ($q !== '' || $cat > 0 || $status !== ''): ?>
-        <div class="col-12">
-            <a href="<?= e(url('inventory.php')) ?>" class="small text-decoration-none">Clear filters</a>
+<form class="card-ui filter-card mb-3" method="get" action="<?= e(url('items/inventory.php')) ?>">
+    <div class="row g-2 align-items-end">
+        <div class="col-12 col-md-5">
+            <label class="form-label small text-muted mb-0" for="q">Search</label>
+            <input type="text" class="form-control" id="q" name="q" value="<?= e($q) ?>" placeholder="SKU, name, description, category">
         </div>
-    <?php endif; ?>
+        <div class="col-6 col-md-3">
+            <label class="form-label small text-muted mb-0" for="category_id">Category</label>
+            <select class="form-select" id="category_id" name="category_id">
+                <option value="0">All categories</option>
+                <?php foreach ($catOpts as $c): ?>
+                    <option value="<?= (int)$c['category_id'] ?>" <?= $cat === (int)$c['category_id'] ? 'selected' : '' ?>>
+                        <?= e($c['category_name']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label small text-muted mb-0" for="status">Status</label>
+            <select class="form-select" id="status" name="status">
+                <option value="" <?= $status === '' ? 'selected' : '' ?>>All</option>
+                <option value="Normal" <?= $status === 'Normal' ? 'selected' : '' ?>>Normal</option>
+                <option value="Low" <?= $status === 'Low' ? 'selected' : '' ?>>Low</option>
+                <option value="Inactive" <?= $status === 'Inactive' ? 'selected' : '' ?>>Inactive</option>
+            </select>
+        </div>
+        <div class="col-12 col-md-2 d-grid">
+            <button type="submit" class="btn btn-outline-secondary">Apply</button>
+        </div>
+        <?php if ($q !== '' || $cat > 0 || $status !== ''): ?>
+            <div class="col-12">
+                <a href="<?= e(url('items/inventory.php')) ?>" class="small text-decoration-none">Clear filters</a>
+            </div>
+        <?php endif; ?>
+    </div>
 </form>
 
 <div class="card-ui">
@@ -168,7 +180,7 @@ function inv_page_url(int $p, string $q, int $cat, string $status): string
                             <?php else: ?>
                                 No items yet.
                                 <?php if (is_admin()): ?>
-                                    <a href="<?= e(url('item_form.php')) ?>" class="ms-1">Add the first item</a>.
+                                    <a href="<?= e(url('items/item_form.php')) ?>" class="ms-1">Add the first item</a>.
                                 <?php endif; ?>
                             <?php endif; ?>
                         </td>
@@ -205,11 +217,11 @@ function inv_page_url(int $p, string $q, int $cat, string $status): string
                         <td class="text-end">
                             <div class="btn-group btn-group-sm" role="group" aria-label="Row actions">
                                 <?php if ($active): ?>
-                                    <a href="<?= e(url('stock_in.php?item_id=' . (int)$r['item_id'])) ?>"
+                                    <a href="<?= e(url('stock/stock_in.php?item_id=' . (int)$r['item_id'])) ?>"
                                        class="btn btn-outline-success" title="Record stock-in" aria-label="Record stock-in">
                                         <i class="bi bi-arrow-down-circle"></i>
                                     </a>
-                                    <a href="<?= e(url('stock_out.php?item_id=' . (int)$r['item_id'])) ?>"
+                                    <a href="<?= e(url('stock/stock_out.php?item_id=' . (int)$r['item_id'])) ?>"
                                        class="btn btn-outline-warning" title="Record stock-out" aria-label="Record stock-out">
                                         <i class="bi bi-arrow-up-circle"></i>
                                     </a>
@@ -223,7 +235,7 @@ function inv_page_url(int $p, string $q, int $cat, string $status): string
                                 <?php endif; ?>
                                 <?php if (is_admin()): ?>
                                     <?php if ($active): ?>
-                                        <a href="<?= e(url('adjustment.php?item_id=' . (int)$r['item_id'])) ?>"
+                                        <a href="<?= e(url('stock/adjustment.php?item_id=' . (int)$r['item_id'])) ?>"
                                            class="btn btn-outline-info" title="Stock adjustment" aria-label="Stock adjustment">
                                             <i class="bi bi-sliders"></i>
                                         </a>
@@ -232,7 +244,7 @@ function inv_page_url(int $p, string $q, int $cat, string $status): string
                                             <i class="bi bi-sliders"></i>
                                         </button>
                                     <?php endif; ?>
-                                    <a href="<?= e(url('item_form.php?id=' . (int)$r['item_id'])) ?>"
+                                    <a href="<?= e(url('items/item_form.php?id=' . (int)$r['item_id'])) ?>"
                                        class="btn btn-outline-secondary" title="Edit item" aria-label="Edit item">
                                         <i class="bi bi-pencil"></i>
                                     </a>
@@ -274,4 +286,4 @@ function inv_page_url(int $p, string $q, int $cat, string $status): string
     <?php endif; ?>
 </div>
 
-<?php require __DIR__ . '/includes/footer.php'; ?>
+<?php require __DIR__ . '/../includes/footer.php'; ?>

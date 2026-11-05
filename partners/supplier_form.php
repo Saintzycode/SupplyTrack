@@ -3,12 +3,11 @@
  * supplier_form.php - add / edit supplier (admin only).
  * Includes the supplier profile (linked items) in edit mode.
  */
-require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/../includes/auth.php';
 require_admin();
 
 $pageTitle  = 'Add supplier';
 $activePage = 'suppliers';
-require_once __DIR__ . '/includes/header.php';
 
 $pdo = db();
 
@@ -25,7 +24,7 @@ if ($editing) {
     $supplier = $stmt->fetch();
     if (!$supplier) {
         flash('danger', 'Supplier not found.');
-        redirect('suppliers.php');
+        redirect('partners/suppliers.php');
     }
     $pageTitle = 'Edit supplier';
 }
@@ -45,7 +44,7 @@ $notice = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_active'])) {
     if (!csrf_verify()) {
         flash('danger', 'Session expired. Try again.');
-        redirect($editing ? 'supplier_form.php?id=' . $supplierId : 'suppliers.php');
+        redirect($editing ? 'partners/supplier_form.php?id=' . $supplierId : 'partners/suppliers.php');
     }
     $row = $pdo->prepare('SELECT company_name, is_active FROM suppliers WHERE supplier_id = :id');
     $row->execute([':id' => $supplierId]);
@@ -59,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_active'])) {
             current_user()['id']);
         flash('success', $newState === 0 ? 'Supplier deactivated.' : 'Supplier reactivated.');
     }
-    redirect('suppliers.php');
+    redirect('partners/suppliers.php');
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['toggle_active'])) {
@@ -135,7 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['toggle_active'])) {
                     ($editing ? 'Updated' : 'Created') . " supplier: {$old['company_name']}",
                     current_user()['id']);
                 flash('success', $editing ? 'Supplier updated.' : 'Supplier created.');
-                redirect('suppliers.php');
+                redirect('partners/suppliers.php');
             } catch (PDOException $e) {
                 error_log('supplier_form save failed: ' . $e->getMessage());
                 $errors['_form'] = 'Something went wrong while saving. Please try again.';
@@ -143,6 +142,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['toggle_active'])) {
         }
     }
 }
+
+require_once __DIR__ . '/../includes/header.php';
 
 // ---- Supplier profile (linked items) in edit mode ----
 $linkedItems = [];
@@ -164,7 +165,7 @@ if ($editing && $supplier) {
         <h1><?= $editing ? 'Edit supplier' : 'Add supplier' ?></h1>
         <p><?= $editing ? 'Update supplier details and availability.' : 'Create a new supplier.' ?></p>
     </div>
-    <a href="<?= e(url('suppliers.php')) ?>" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back to suppliers</a>
+    <a href="<?= e(url('partners/suppliers.php')) ?>" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back to suppliers</a>
 </div>
 
 <?php if (!empty($errors['_form'])): ?>
@@ -274,7 +275,7 @@ if ($editing && $supplier) {
                             ? 'Supplier is available for new stock-in transactions.'
                             : 'Supplier is excluded from new stock-in transactions.' ?>
                     </p>
-                    <button type="submit" formmethod="post" name="toggle_active" value="1"
+                    <button type="submit" name="toggle_active" value="1" onclick="return confirm('<?= e((int)$supplier['is_active'] === 1 ? 'Do you want to deactivate this supplier?' : 'Do you want to reactivate this supplier?') ?>');"
                             class="btn btn-sm <?= (int)$supplier['is_active'] === 1 ? 'btn-outline-danger' : 'btn-outline-success' ?>">
                         <?= (int)$supplier['is_active'] === 1 ? 'Deactivate supplier' : 'Reactivate supplier' ?>
                     </button>
@@ -284,10 +285,10 @@ if ($editing && $supplier) {
             </div>
             <div class="d-grid gap-2 mt-3">
                 <button type="submit" class="btn btn-primary py-2"><i class="bi bi-check-lg me-1"></i><?= $editing ? 'Save changes' : 'Create supplier' ?></button>
-                <a href="<?= e(url('suppliers.php')) ?>" class="btn btn-outline-secondary">Cancel</a>
+                <a href="<?= e(url('partners/suppliers.php')) ?>" class="btn btn-outline-secondary">Cancel</a>
             </div>
         </div>
     </div>
 </form>
 
-<?php require __DIR__ . '/includes/footer.php'; ?>
+<?php require __DIR__ . '/../includes/footer.php'; ?>

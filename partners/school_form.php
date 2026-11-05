@@ -3,12 +3,11 @@
  * school_form.php - add / edit school (admin only).
  * Profile lists this school's distribution history (from v_distribution_report).
  */
-require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/../includes/auth.php';
 require_admin();
 
 $pageTitle  = 'Add school';
 $activePage = 'schools';
-require_once __DIR__ . '/includes/header.php';
 
 $pdo = db();
 
@@ -25,7 +24,7 @@ if ($editing) {
     $school = $stmt->fetch();
     if (!$school) {
         flash('danger', 'School not found.');
-        redirect('schools.php');
+        redirect('partners/schools.php');
     }
     $pageTitle = 'Edit school';
 }
@@ -43,7 +42,7 @@ $errors = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_active'])) {
     if (!csrf_verify()) {
         flash('danger', 'Session expired. Try again.');
-        redirect($editing ? 'school_form.php?id=' . $schoolId : 'schools.php');
+        redirect($editing ? 'partners/school_form.php?id=' . $schoolId : 'partners/schools.php');
     }
     $row = $pdo->prepare('SELECT school_name, is_active FROM schools WHERE school_id = :id');
     $row->execute([':id' => $schoolId]);
@@ -57,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_active'])) {
             current_user()['id']);
         flash('success', $newState === 0 ? 'School deactivated.' : 'School reactivated.');
     }
-    redirect('schools.php');
+    redirect('partners/schools.php');
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['toggle_active'])) {
@@ -135,7 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['toggle_active'])) {
                     ($editing ? 'Updated' : 'Created') . " school: {$old['school_name']}",
                     current_user()['id']);
                 flash('success', $editing ? 'School updated.' : 'School created.');
-                redirect('schools.php');
+                redirect('partners/schools.php');
             } catch (PDOException $e) {
                 if ($e->getCode() === '23000') {
                     $errors['school_name'] = 'School name already exists.';
@@ -147,6 +146,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['toggle_active'])) {
         }
     }
 }
+
+require_once __DIR__ . '/../includes/header.php';
 
 // ---- Profile: distribution history grouped by distribution ----
 $distributions = [];
@@ -179,7 +180,7 @@ if ($editing && $school) {
         <h1><?= $editing ? 'Edit school' : 'Add school' ?></h1>
         <p><?= $editing ? 'Update school details and availability.' : 'Create a new school / customer.' ?></p>
     </div>
-    <a href="<?= e(url('schools.php')) ?>" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back to schools</a>
+    <a href="<?= e(url('partners/schools.php')) ?>" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back to schools</a>
 </div>
 
 <?php if (!empty($errors['_form'])): ?>
@@ -291,7 +292,7 @@ if ($editing && $school) {
                             ? 'School is available for new distributions.'
                             : 'School is excluded from new distributions.' ?>
                     </p>
-                    <button type="submit" formmethod="post" name="toggle_active" value="1"
+                    <button type="submit" name="toggle_active" value="1" onclick="return confirm('<?= e((int)$school['is_active'] === 1 ? 'Do you want to deactivate this school?' : 'Do you want to reactivate this school?') ?>');"
                             class="btn btn-sm <?= (int)$school['is_active'] === 1 ? 'btn-outline-danger' : 'btn-outline-success' ?>">
                         <?= (int)$school['is_active'] === 1 ? 'Deactivate school' : 'Reactivate school' ?>
                     </button>
@@ -301,10 +302,10 @@ if ($editing && $school) {
             </div>
             <div class="d-grid gap-2 mt-3">
                 <button type="submit" class="btn btn-primary py-2"><i class="bi bi-check-lg me-1"></i><?= $editing ? 'Save changes' : 'Create school' ?></button>
-                <a href="<?= e(url('schools.php')) ?>" class="btn btn-outline-secondary">Cancel</a>
+                <a href="<?= e(url('partners/schools.php')) ?>" class="btn btn-outline-secondary">Cancel</a>
             </div>
         </div>
     </div>
 </form>
 
-<?php require __DIR__ . '/includes/footer.php'; ?>
+<?php require __DIR__ . '/../includes/footer.php'; ?>

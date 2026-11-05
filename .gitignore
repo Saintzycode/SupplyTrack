@@ -19,3 +19,6 @@ php_errorlog*
 *.tmp
 *~
 _private/
+
+# --- Database dumps / local fix scripts ---
+database/

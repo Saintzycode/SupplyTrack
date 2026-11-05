@@ -2,11 +2,84 @@
 /**
  * stock_out.php - record a stock-out transaction (AGENTS.md build step 4).
  */
-$pageTitle  = 'Stock-out';
-$activePage = 'inventory';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_login();
 
 $pdo = db();
+
+// ---- Handle POST *before* the page renders (Post/Redirect/Get) ----
+// Read the fields, validate, insert, then redirect. redirect() must run
+// before any HTML output, so header.php is included *after* this block.
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!csrf_verify()) {
+        flash('danger', 'Session expired. Please try again.');
+        redirect('stock/stock_out.php');
+    }
+    $itemId = (int)($_POST['item_id'] ?? 0);
+    $qty = trim($_POST['quantity'] ?? '');
+    $date = trim($_POST['transaction_date'] ?? '');
+    $reason = trim($_POST['reason'] ?? '');
+    $remarks = trim($_POST['remarks'] ?? '');
+    $dest = 'stock/stock_out.php' . ($itemId > 0 ? '?' . http_build_query(['item_id' => $itemId]) : '');
+
+    $errs = [];
+    $valid = $pdo->prepare('SELECT COUNT(*) FROM items WHERE item_id = :id AND is_active = 1');
+    $valid->execute([':id' => $itemId]);
+    $itemOk = (int)$valid->fetchColumn() > 0;
+    if (!$itemOk) $errs['item_id'] = 'Select an item.';
+    $onHand = 0;
+    if ($itemOk) {
+        $st = $pdo->prepare('SELECT quantity_on_hand FROM items WHERE item_id = :id');
+        $st->execute([':id' => $itemId]);
+        $onHand = (int)$st->fetchColumn();
+    }
+    if (!valid_qty($qty)) {
+        $errs['quantity'] = 'Quantity must be a whole number between 1 and 1,000,000.';
+    } elseif ((int)$qty > $onHand) {
+        $errs['quantity'] = 'Insufficient stock. Available: ' . number_format($onHand) . '.';
+    }
+    if (!valid_date($date)) $errs['transaction_date'] = 'Enter a valid date.';
+    if ($reason === '') $errs['reason'] = 'Reason is required.';
+    elseif (mb_strlen($reason) > 255) $errs['reason'] = 'Reason must be 255 characters or fewer.';
+    if (mb_strlen($remarks) > 255) $errs['remarks'] = 'Remarks must be 255 characters or fewer.';
+
+    if ($errs) {
+        flash('danger', implode(' ', array_values($errs)));
+        redirect($dest);
+    }
+    try {
+        $stmt = $pdo->prepare(
+            "INSERT INTO stock_transactions
+               (item_id, transaction_type, quantity_change, reason, remarks, transaction_date, created_by)
+             VALUES (:item, 'stock_out', :qty, :reason, :remarks, :tdate, :by)"
+        );
+        $stmt->execute([
+            ':item' => $itemId,
+            ':qty' => -1 * (int)$qty,
+            ':reason' => $reason,
+            ':remarks' => $remarks !== '' ? $remarks : null,
+            ':tdate' => $date . ' 00:00:00',
+            ':by' => (int)current_user()['id'],
+        ]);
+        $newId = (int)$pdo->lastInsertId();
+        audit_log('stock_out', 'stock_transactions', $newId, "Stock-out: item_id {$itemId}, qty {$qty}, reason: {$reason}", current_user()['id']);
+        flash('success', 'Stock-out recorded. On-hand quantity updated.');
+        redirect($dest);
+    } catch (PDOException $e) {
+        $msg = $e->getCode() === '45000' ? ($e->errorInfo[2] ?? $e->getMessage()) : 'Something went wrong. Please try again.';
+        if ($e->getCode() !== '45000') error_log('stock_out insert failed: ' . $e->getMessage());
+        flash('danger', $msg);
+        redirect($dest);
+    }
+}
+
+$pageTitle  = 'Stock-out';
+$activePage = 'inventory';
+// Declare error vars before any template use (avoids "Use of unassigned variable" warnings)
+$submitError = null;
+$errors = [];
+
+require_once __DIR__ . '/../includes/header.php';
 
 $items = $pdo->query(
     'SELECT item_id, sku, item_name, unit_of_measure, quantity_on_hand, reorder_point, is_active
@@ -27,87 +100,9 @@ $old = [
     'reason'           => '',
     'remarks'          => '',
 ];
-$errors = [];
-$submitError = null;
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!csrf_verify()) {
-        $errors['_form'] = 'Session expired. Please try again.';
-    } else {
-        $old['item_id']          = (int)($_POST['item_id'] ?? 0);
-        $old['quantity']         = trim($_POST['quantity'] ?? '');
-        $old['transaction_date'] = trim($_POST['transaction_date'] ?? '');
-        $old['reason']           = trim($_POST['reason'] ?? '');
-        $old['remarks']          = trim($_POST['remarks'] ?? '');
-        $selectedItemId          = $old['item_id'];
-
-        $validItemIds = array_map('intval', array_column($items, 'item_id'));
-        if (!in_array($old['item_id'], $validItemIds, true)) {
-            $errors['item_id'] = 'Select an item.';
-        }
-
-        if ($old['quantity'] === '' || !ctype_digit($old['quantity']) || (int)$old['quantity'] <= 0) {
-            $errors['quantity'] = 'Quantity must be a whole number greater than 0.';
-        }
-
-        // available-quantity check (server-side friendly error)
-        if (!isset($errors['item_id']) && !isset($errors['quantity'])) {
-            $onHandStmt = $pdo->prepare('SELECT quantity_on_hand FROM items WHERE item_id = :id');
-            $onHandStmt->execute([':id' => $old['item_id']]);
-            $onHand = (int)$onHandStmt->fetchColumn();
-            if ((int)$old['quantity'] > $onHand) {
-                $errors['quantity'] = 'Insufficient stock. Available: ' . number_format($onHand) . '.';
-            }
-        }
-
-        $dt = DateTime::createFromFormat('Y-m-d', $old['transaction_date']);
-        if ($dt === false || $dt->format('Y-m-d') !== $old['transaction_date']) {
-            $errors['transaction_date'] = 'Enter a valid date.';
-        }
-
-        if ($old['reason'] === '') {
-            $errors['reason'] = 'Reason is required.';
-        } elseif (mb_strlen($old['reason']) > 255) {
-            $errors['reason'] = 'Reason must be 255 characters or fewer.';
-        }
-        if (mb_strlen($old['remarks']) > 255) {
-            $errors['remarks'] = 'Remarks must be 255 characters or fewer.';
-        }
-
-        if (!$errors) {
-            try {
-                $stmt = $pdo->prepare(
-                    "INSERT INTO stock_transactions
-                       (item_id, transaction_type, quantity_change, reason, remarks, transaction_date, created_by)
-                     VALUES
-                       (:item, 'stock_out', :qty, :reason, :remarks, :tdate, :by)"
-                );
-                $stmt->execute([
-                    ':item'    => $old['item_id'],
-                    ':qty'     => -1 * (int)$old['quantity'],
-                    ':reason'  => $old['reason'],
-                    ':remarks' => $old['remarks'] !== '' ? $old['remarks'] : null,
-                    ':tdate'   => $old['transaction_date'] . ' 00:00:00',
-                    ':by'      => (int)current_user()['id'],
-                ]);
-                $newId = (int)$pdo->lastInsertId();
-                audit_log('stock_out', 'stock_transactions', $newId,
-                    "Stock-out: item_id {$old['item_id']}, qty {$old['quantity']}, reason: {$old['reason']}",
-                    current_user()['id']);
-                flash('success', 'Stock-out recorded. On-hand quantity updated.');
-                $qs = http_build_query(['item_id' => $old['item_id']]);
-                redirect('stock_out.php?' . $qs);
-            } catch (PDOException $e) {
-                if ($e->getCode() === '45000') {
-                    $submitError = $e->errorInfo[2] ?? $e->getMessage();
-                } else {
-                    error_log('stock_out insert failed: ' . $e->getMessage());
-                    $submitError = 'Something went wrong while recording the stock-out. Please try again.';
-                }
-            }
-        }
-    }
-}
+// (All POST handling is at the top of this file, before header.php is
+// included — see the Post/Redirect/Get block above.)
 
 // ---- Side panel ----
 $panelItem = null;
@@ -127,10 +122,10 @@ if ($selectedItemId > 0) {
         <h1>Stock-out</h1>
         <p>Record outgoing stock (manual removal or damage).</p>
     </div>
-    <a href="<?= e(url('inventory.php')) ?>" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back to inventory</a>
+    <a href="<?= e(url('items/inventory.php')) ?>" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back to inventory</a>
 </div>
 
-<?php if ($submitError): ?>
+<?php if (!empty($submitError)): ?>
     <div class="alert alert-danger"><?= e($submitError) ?></div>
 <?php endif; ?>
 <?php if (!empty($errors['_form'])): ?>
@@ -140,14 +135,14 @@ if ($selectedItemId > 0) {
 <div class="row g-4">
     <div class="col-12 col-xl-8">
         <div class="card-ui p-4">
-            <form method="post" novalidate>
+            <form method="post" onsubmit="if(this.dataset.submitted){return false} this.dataset.submitted=1; this.querySelectorAll('button[type=submit]').forEach(function(b){b.disabled=true; b.innerHTML='Saving…';});">
                 <?= csrf_field() ?>
 
                 <div class="mb-3">
                     <label class="form-label" for="item_id">Item <span class="text-danger">*</span></label>
                     <select class="form-select <?= isset($errors['item_id']) ? 'is-invalid' : '' ?>"
                             id="item_id" name="item_id" required>
-                        <option value="0">Select an item</option>
+                        <option value="">Select an item</option>
                         <?php foreach ($items as $it): ?>
                             <option value="<?= (int)$it['item_id'] ?>" <?= $old['item_id'] === (int)$it['item_id'] ? 'selected' : '' ?>>
                                 <?= e($it['sku'] . ' - ' . $it['item_name']) ?>
@@ -196,7 +191,7 @@ if ($selectedItemId > 0) {
                     <button type="submit" class="btn btn-primary" <?= $items ? '' : 'disabled' ?>>
                         <i class="bi bi-dash-lg me-1"></i>Record stock-out
                     </button>
-                    <a href="<?= e(url('stock_out.php')) ?>" class="btn btn-outline-secondary">Reset</a>
+                    <a href="<?= e(url('stock/stock_out.php')) ?>" class="btn btn-outline-secondary">Reset</a>
                 </div>
             </form>
         </div>
@@ -249,4 +244,4 @@ if ($selectedItemId > 0) {
     </div>
 </div>
 
-<?php require __DIR__ . '/includes/footer.php'; ?>
+<?php require __DIR__ . '/../includes/footer.php'; ?>

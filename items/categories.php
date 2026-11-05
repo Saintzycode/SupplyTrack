@@ -4,7 +4,7 @@
  * List categories with their item counts; add, rename, delete-unused only.
  * The table has no `is_active`, so a category is only removable while unused.
  */
-require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/../includes/auth.php';
 require_admin();
 
 $pdo = db();
@@ -17,7 +17,7 @@ $openModal = '';   // 'add' | 'edit' - reopened automatically when a POST failed
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_verify()) {
         flash('danger', 'Session expired. Please try again.');
-        redirect('categories.php');
+        redirect('items/categories.php');
     }
 
     $action = $_POST['action'] ?? '';
@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             ->execute([':n' => $name, ':d' => ($desc === '' ? null : $desc), ':id' => $id]);
                         audit_log('update', 'categories', $id, "Updated category: {$prev} -> {$name}", $me);
                         flash('success', 'Category updated.');
-                        redirect('categories.php');
+                        redirect('items/categories.php');
                     }
                 } else {
                     $pdo->prepare('INSERT INTO categories (category_name, description) VALUES (:n, :d)')
@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $newId = (int)$pdo->lastInsertId();
                     audit_log('create', 'categories', $newId, "Created category: {$name}", $me);
                     flash('success', 'Category added.');
-                    redirect('categories.php');
+                    redirect('items/categories.php');
                 }
             } catch (PDOException $e) {
                 if ($e->getCode() === '23000') {
@@ -96,11 +96,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash('success', 'Category deleted.');
             }
         }
-        redirect('categories.php');
+        redirect('items/categories.php');
     }
 
     if ($action !== 'save') {
-        redirect('categories.php');
+        redirect('items/categories.php');
     }
 }
 
@@ -117,7 +117,7 @@ $rows = $pdo->query(
 
 $pageTitle  = 'Categories';
 $activePage = 'categories';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/../includes/header.php';
 ?>
 <div class="page-head">
     <div>
@@ -271,4 +271,4 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 <?php endif; ?>
-<?php require __DIR__ . '/includes/footer.php'; ?>
+<?php require __DIR__ . '/../includes/footer.php'; ?>

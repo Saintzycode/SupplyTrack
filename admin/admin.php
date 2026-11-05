@@ -2,27 +2,209 @@
 /**
  * admin.php - user management, own password change, low-stock alerts (admin only).
  */
-require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/../includes/auth.php';
 require_admin();
-
-$pageTitle  = 'Admin';
-$activePage = 'admin';
-require_once __DIR__ . '/includes/header.php';
 
 $pdo = db();
 $me  = (int)current_user()['id'];
 
+// ---- Handle POST *before* the page renders (Post/Redirect/Get) ----
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!csrf_verify()) {
+        flash('danger', 'Session expired. Try again.');
+        redirect('admin/admin.php');
+    }
+    if (isset($_POST['toggle_active_user'])) {
+        $tid = (int)($_POST['target_id'] ?? 0);
+        if ($tid === $me) {
+            flash('danger', 'You cannot deactivate your own account.');
+            redirect('admin/admin.php');
+        }
+        $row = $pdo->prepare('SELECT username, is_active, role FROM users WHERE user_id = :id');
+        $row->execute([':id' => $tid]);
+        $r = $row->fetch();
+        if ($r) {
+            $newState = (int)$r['is_active'] === 1 ? 0 : 1;
+            if ($newState === 0 && $r['role'] === 'admin') {
+                $admins = (int)$pdo->query("SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1")->fetchColumn();
+                if ($admins <= 1) {
+                    flash('danger', 'Cannot deactivate the last admin account.');
+                    redirect('admin/admin.php');
+                }
+            }
+            $pdo->prepare('UPDATE users SET is_active = :s, updated_at = NOW() WHERE user_id = :id')
+                ->execute([':s' => $newState, ':id' => $tid]);
+            audit_log($newState === 0 ? 'deactivate' : 'reactivate', 'users', $tid,
+                ($newState === 0 ? 'Deactivated' : 'Reactivated') . " user: {$r['username']}", $me);
+            flash('success', $newState === 0 ? 'Account deactivated.' : 'Account reactivated.');
+        }
+        redirect('admin/admin.php');
+    }
+    if (isset($_POST['update_user'])) {
+        $uid = (int)($_POST['uid'] ?? 0);
+        $fullName = trim($_POST['full_name'] ?? '');
+        $username = trim($_POST['username'] ?? '');
+        $email = trim($_POST['email'] ?? '');
+        $role = in_array($_POST['role'] ?? '', ['admin', 'staff'], true) ? $_POST['role'] : 'staff';
+        $errs = [];
+        if ($fullName === '' || mb_strlen($fullName) > 100) $errs[] = 'Full name is required (max 100).';
+        if (!preg_match('/^[A-Za-z0-9_.-]{3,50}$/', $username)) $errs[] = 'Username must be 3-50 chars (letters, numbers, . _ -).';
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 100) $errs[] = 'Enter a valid email address.';
+        $dc = $pdo->prepare('SELECT COUNT(*) FROM users WHERE username = :u AND user_id <> :id');
+        $dc->execute([':u' => $username, ':id' => $uid]);
+        if ((int)$dc->fetchColumn() > 0) $errs[] = 'Username already exists.';
+        $de = $pdo->prepare('SELECT COUNT(*) FROM users WHERE email = :e AND user_id <> :id');
+        $de->execute([':e' => $email, ':id' => $uid]);
+        if ((int)$de->fetchColumn() > 0) $errs[] = 'Email already exists.';
+        if ($uid === $me) $role = 'admin';
+        if ($role === 'staff') {
+            $admins = (int)$pdo->query("SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1")->fetchColumn();
+            $meRow = $pdo->prepare('SELECT role FROM users WHERE user_id = :id');
+            $meRow->execute([':id' => $uid]);
+            if ($admins <= 1 && $meRow->fetchColumn() === 'admin') {
+                $errs[] = 'Cannot demote the last admin account.';
+            }
+        }
+        if ($errs) {
+            flash('danger', implode(' ', $errs));
+            redirect('admin/admin.php?mode=edit&uid=' . $uid);
+        }
+        $pdo->prepare('UPDATE users SET full_name = :n, username = :u, email = :e, role = :r, updated_at = NOW() WHERE user_id = :id')
+            ->execute([':n' => $fullName, ':u' => $username, ':e' => $email, ':r' => $role, ':id' => $uid]);
+        audit_log('update', 'users', $uid, "Updated account: {$username} (role {$role})", $me);
+        flash('success', 'Account updated.');
+        redirect('admin/admin.php');
+    }
+    if (isset($_POST['create_user'])) {
+        $fullName = trim($_POST['full_name'] ?? '');
+        $username = trim($_POST['username'] ?? '');
+        $email = trim($_POST['email'] ?? '');
+        $role = in_array($_POST['role'] ?? '', ['admin', 'staff'], true) ? $_POST['role'] : 'staff';
+        $pw = (string)($_POST['password'] ?? '');
+        $pw2 = (string)($_POST['password2'] ?? '');
+        $errs = [];
+        if ($fullName === '' || mb_strlen($fullName) > 100) $errs[] = 'Full name is required (max 100).';
+        if (!preg_match('/^[A-Za-z0-9_.-]{3,50}$/', $username)) $errs[] = 'Username must be 3-50 chars (letters, numbers, . _ -).';
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 100) $errs[] = 'Enter a valid email address.';
+        if (strlen($pw) < 8) $errs[] = 'Password must be at least 8 characters.';
+        if ($pw !== $pw2) $errs[] = 'Passwords do not match.';
+        $dc = $pdo->prepare('SELECT COUNT(*) FROM users WHERE username = :u');
+        $dc->execute([':u' => $username]);
+        if ((int)$dc->fetchColumn() > 0) $errs[] = 'Username already exists.';
+        $de = $pdo->prepare('SELECT COUNT(*) FROM users WHERE email = :e');
+        $de->execute([':e' => $email]);
+        if ((int)$de->fetchColumn() > 0) $errs[] = 'Email already exists.';
+        if ($errs) {
+            flash('danger', implode(' ', $errs));
+            redirect('admin/admin.php?mode=add');
+        }
+        try {
+            $ins = $pdo->prepare(
+                "INSERT INTO users (full_name, username, email, password_hash, role, is_active)
+                 VALUES (:n, :u, :e, :p, :r, 1)"
+            );
+            $ins->execute([':n' => $fullName, ':u' => $username, ':e' => $email, ':p' => password_hash($pw, PASSWORD_BCRYPT), ':r' => $role]);
+            $newId = (int)$pdo->lastInsertId();
+            audit_log('create', 'users', $newId, "Created {$role} account: {$username}", $me);
+            flash('success', 'Account created.');
+            redirect('admin/admin.php');
+        } catch (PDOException $e) {
+            flash('danger', 'Something went wrong. Please try again.');
+            if ($e->getCode() !== '23000') error_log('admin create user failed: ' . $e->getMessage());
+            redirect('admin/admin.php?mode=add');
+        }
+    }
+    if (isset($_POST['reset_pw'])) {
+        $tid = (int)($_POST['uid'] ?? 0);
+        $new = (string)($_POST['new_password'] ?? '');
+        $confirm = (string)($_POST['confirm_password'] ?? '');
+        $row = $pdo->prepare('SELECT username, role FROM users WHERE user_id = :id');
+        $row->execute([':id' => $tid]);
+        $target = $row->fetch();
+        if (!$target) {
+            flash('danger', 'User not found.');
+            redirect('admin/admin.php');
+        }
+        if ($target['role'] !== 'staff') {
+            flash('danger', 'Passwords can only be reset for Staff accounts.');
+            redirect('admin/admin.php');
+        }
+        if (strlen($new) < 8) {
+            flash('danger', 'New password must be at least 8 characters.');
+            redirect('admin/admin.php?mode=reset&uid=' . $tid);
+        }
+        if ($new !== $confirm) {
+            flash('danger', 'New passwords do not match.');
+            redirect('admin/admin.php?mode=reset&uid=' . $tid);
+        }
+        $pdo->prepare('UPDATE users SET password_hash = :h, failed_attempts = 0, locked_until = NULL, updated_at = NOW() WHERE user_id = :id')
+            ->execute([':h' => password_hash($new, PASSWORD_BCRYPT), ':id' => $tid]);
+        audit_log('password_reset', 'users', $tid, "Administrator reset password for: {$target['username']}", $me);
+        flash('success', "Password reset for {$target['username']}.");
+        redirect('admin/admin.php');
+    }
+    if (isset($_POST['change_own_pw'])) {
+        $current = (string)($_POST['current_password'] ?? '');
+        $new = (string)($_POST['new_password'] ?? '');
+        $confirm = (string)($_POST['confirm_password'] ?? '');
+        $row = $pdo->prepare('SELECT password_hash FROM users WHERE user_id = :id');
+        $row->execute([':id' => $me]);
+        $hash = $row->fetchColumn();
+        if (!password_verify($current, (string)$hash)) {
+            flash('danger', 'Current password is incorrect.');
+            redirect('admin/admin.php');
+        }
+        if (strlen($new) < 8) {
+            flash('danger', 'New password must be at least 8 characters.');
+            redirect('admin/admin.php');
+        }
+        if ($new !== $confirm) {
+            flash('danger', 'New passwords do not match.');
+            redirect('admin/admin.php');
+        }
+        $pdo->prepare('UPDATE users SET password_hash = :h, updated_at = NOW() WHERE user_id = :id')
+            ->execute([':h' => password_hash($new, PASSWORD_BCRYPT), ':id' => $me]);
+        audit_log('password_change', 'users', $me, 'Administrator changed own password', $me);
+        flash('success', 'Your password has been updated.');
+        redirect('admin/admin.php');
+    }
+    redirect('admin/admin.php');
+}
+
+$pageTitle  = 'Admin';
+$activePage = 'admin';
+
+$addOld = ['full_name' => '', 'username' => '', 'email' => '', 'role' => 'staff'];
+$editUser = null;
 $mode = $_GET['mode'] ?? 'list';
 if (!in_array($mode, ['list', 'add', 'edit', 'reset'], true)) {
     $mode = 'list';
 }
 $uid  = (int)($_GET['uid'] ?? 0);
-if (isset($_POST['uid'])) {
-    $uid = (int)$_POST['uid'];
+if ($mode === 'edit' && $uid > 0) {
+    $st = $pdo->prepare('SELECT user_id, full_name, username, email, role, is_active, last_login, failed_attempts, locked_until FROM users WHERE user_id = :id');
+    $st->execute([':id' => $uid]);
+    $editUser = $st->fetch();
+    if (!$editUser) {
+        flash('danger', 'User not found.');
+        redirect('admin/admin.php');
+    }
 }
-
+$editOld = $editUser ?: ['full_name' => '', 'username' => '', 'email' => '', 'role' => 'staff', 'is_active' => 1];
 $errors = [];
-$success = null;
+$alerts = $pdo->query(
+    'SELECT a.alert_id, a.item_id, a.quantity_at_alert, a.reorder_point, a.created_at,
+            i.sku, i.item_name, i.quantity_on_hand
+       FROM low_stock_alerts a
+       JOIN items i ON i.item_id = a.item_id
+      WHERE a.is_resolved = 0
+      ORDER BY a.created_at DESC'
+)->fetchAll();
+$users = $pdo->query(
+    'SELECT user_id, full_name, username, email, role, is_active, last_login, failed_attempts, locked_until
+       FROM users
+       ORDER BY role DESC, full_name ASC'
+)->fetchAll();
 
 // ---- Handle own password change ----
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_own_pw'])) {
@@ -50,7 +232,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_own_pw'])) {
                 ->execute([':h' => password_hash($new, PASSWORD_BCRYPT), ':id' => $me]);
             audit_log('password_change', 'users', $me, 'Administrator changed own password', $me);
             flash('success', 'Your password has been updated.');
-            redirect('admin.php');
+            redirect('admin/admin.php');
         }
     }
 }
@@ -59,25 +241,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_own_pw'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_active_user'])) {
     if (!csrf_verify()) {
         flash('danger', 'Session expired. Try again.');
-        redirect('admin.php');
+        redirect('admin/admin.php');
     }
     $tid = (int)($_POST['target_id'] ?? 0);
     if ($tid === $me) {
         flash('danger', 'You cannot deactivate your own account.');
-        redirect('admin.php');
+        redirect('admin/admin.php');
     }
     $row = $pdo->prepare('SELECT username, is_active, role FROM users WHERE user_id = :id');
     $row->execute([':id' => $tid]);
     $r = $row->fetch();
     if ($r) {
         $newState = (int)$r['is_active'] === 1 ? 0 : 1;
+        if ($newState === 0 && $r['role'] === 'admin') {
+            $admins = (int)$pdo->query("SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1")->fetchColumn();
+            if ($admins <= 1) {
+                flash('danger', 'Cannot deactivate the last admin account.');
+                redirect('admin/admin.php');
+            }
+        }
         $pdo->prepare('UPDATE users SET is_active = :s, updated_at = NOW() WHERE user_id = :id')
             ->execute([':s' => $newState, ':id' => $tid]);
         audit_log($newState === 0 ? 'deactivate' : 'reactivate', 'users', $tid,
             ($newState === 0 ? 'Deactivated' : 'Reactivated') . " user: {$r['username']}", $me);
         flash('success', $newState === 0 ? 'Account deactivated.' : 'Account reactivated.');
     }
-    redirect('admin.php');
+    redirect('admin/admin.php');
 }
 
 // ---- Create staff ----
@@ -129,7 +318,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_user'])) {
                 $newId = (int)$pdo->lastInsertId();
                 audit_log('create', 'users', $newId, "Created {$addOld['role']} account: {$addOld['username']}", $me);
                 flash('success', 'Account created.');
-                redirect('admin.php');
+                redirect('admin/admin.php');
             } catch (PDOException $e) {
                 if ($e->getCode() === '23000') {
                     // figure out which field
@@ -157,7 +346,7 @@ if ($mode === 'edit' && $uid > 0) {
     $editUser = $st->fetch();
     if (!$editUser) {
         flash('danger', 'User not found.');
-        redirect('admin.php');
+        redirect('admin/admin.php');
     }
 }
 
@@ -194,6 +383,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_user'])) {
             if ((int)$de->fetchColumn() > 0) $errors['edit_email'] = 'Email already exists.';
         }
 
+        if (!isset($errors['edit_role']) && $editOld['role'] === 'staff') {
+            $admins = (int)$pdo->query("SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1")->fetchColumn();
+            if ($admins <= 1) {
+                $meRow = $pdo->prepare('SELECT role FROM users WHERE user_id = :id');
+                $meRow->execute([':id' => $uid]);
+                if ($meRow->fetchColumn() === 'admin') {
+                    $errors['edit_role'] = 'Cannot demote the last admin account.';
+                }
+            }
+        }
+
         if (!array_filter($errors, fn($k) => str_starts_with($k, 'edit_'), ARRAY_FILTER_USE_KEY)) {
             try {
                 $upd = $pdo->prepare(
@@ -209,7 +409,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_user'])) {
                 ]);
                 audit_log('update', 'users', $uid, "Updated account: {$editOld['username']} (role {$editOld['role']})", $me);
                 flash('success', 'Account updated.');
-                redirect('admin.php');
+                redirect('admin/admin.php');
             } catch (PDOException $e) {
                 if ($e->getCode() === '23000') {
                     if (stripos($e->getMessage(), 'username') !== false) $errors['edit_username'] = 'Username already exists.';
@@ -251,7 +451,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reset_pw'])) {
                 ->execute([':h' => password_hash($new, PASSWORD_BCRYPT), ':id' => $tid]);
             audit_log('password_reset', 'users', $tid, "Administrator reset password for: {$target['username']}", $me);
             flash('success', "Password reset for {$target['username']}.");
-            redirect('admin.php');
+            redirect('admin/admin.php');
         }
         if ($errors) {
             $mode = 'reset';
@@ -276,6 +476,8 @@ $users = $pdo->query(
        FROM users
        ORDER BY role DESC, full_name ASC'
 )->fetchAll();
+
+require_once __DIR__ . '/../includes/header.php';
 ?>
 <div class="page-head">
     <div>
@@ -283,9 +485,9 @@ $users = $pdo->query(
         <p>User accounts, password resets, and open low-stock alerts.</p>
     </div>
     <?php if ($mode === 'list'): ?>
-        <a href="<?= e(url('admin.php?mode=add')) ?>" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add staff account</a>
+        <a href="<?= e(url('admin/admin.php?mode=add')) ?>" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add staff account</a>
     <?php else: ?>
-        <a href="<?= e(url('admin.php')) ?>" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back to list</a>
+        <a href="<?= e(url('admin/admin.php')) ?>" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back to list</a>
     <?php endif; ?>
 </div>
 
@@ -341,7 +543,7 @@ $users = $pdo->query(
             </div>
             <div class="d-flex gap-2 mt-3">
                 <button type="submit" class="btn btn-primary">Create account</button>
-                <a href="<?= e(url('admin.php')) ?>" class="btn btn-outline-secondary">Cancel</a>
+                <a href="<?= e(url('admin/admin.php')) ?>" class="btn btn-outline-secondary">Cancel</a>
             </div>
         </form>
     </div>
@@ -387,7 +589,7 @@ $users = $pdo->query(
             </div>
             <div class="d-flex gap-2 mt-3">
                 <button type="submit" class="btn btn-primary">Save changes</button>
-                <a href="<?= e(url('admin.php')) ?>" class="btn btn-outline-secondary">Cancel</a>
+                <a href="<?= e(url('admin/admin.php')) ?>" class="btn btn-outline-secondary">Cancel</a>
             </div>
         </form>
     </div>
@@ -400,7 +602,7 @@ $users = $pdo->query(
     ?>
     <?php if (!$target || $target['role'] !== 'staff'): ?>
         <div class="alert alert-danger">Password can only be reset for Staff accounts.</div>
-        <a href="<?= e(url('admin.php')) ?>" class="btn btn-outline-secondary">Back</a>
+        <a href="<?= e(url('admin/admin.php')) ?>" class="btn btn-outline-secondary">Back</a>
     <?php else: ?>
         <div class="card-ui p-4 mb-4">
             <h2 class="h6 fw-bold mb-3">Reset password: <?= e($target['full_name']) ?> <span class="text-muted fw-normal">(<?= e($target['username']) ?>)</span></h2>
@@ -434,7 +636,7 @@ $users = $pdo->query(
                             data-target="rp_new" data-target2="rp_confirm">
                         <i class="bi bi-shuffle me-1"></i>Generate
                     </button>
-                    <a href="<?= e(url('admin.php')) ?>" class="btn btn-outline-secondary">Cancel</a>
+                    <a href="<?= e(url('admin/admin.php')) ?>" class="btn btn-outline-secondary">Cancel</a>
                     <span class="text-muted small ms-auto">Generate fills a random temporary password you can read and hand over.</span>
                 </div>
             </form>
@@ -485,16 +687,16 @@ $users = $pdo->query(
                             </td>
                             <td class="text-muted small"><?= e($u['last_login'] ? fmt_datetime($u['last_login']) : 'Never') ?></td>
                             <td class="text-end">
-                                <a href="<?= e(url('admin.php?mode=edit&uid=' . (int)$u['user_id'])) ?>" class="btn btn-sm btn-outline-secondary">
+                                <a href="<?= e(url('admin/admin.php?mode=edit&uid=' . (int)$u['user_id'])) ?>" class="btn btn-sm btn-outline-secondary">
                                     <i class="bi bi-pencil"></i>
                                 </a>
                                 <?php if ($u['role'] === 'staff'): ?>
-                                    <a href="<?= e(url('admin.php?mode=reset&uid=' . (int)$u['user_id'])) ?>" class="btn btn-sm btn-outline-primary">
+                                    <a href="<?= e(url('admin/admin.php?mode=reset&uid=' . (int)$u['user_id'])) ?>" class="btn btn-sm btn-outline-primary">
                                         <i class="bi bi-key"></i>
                                     </a>
                                 <?php endif; ?>
                                 <?php if ((int)$u['user_id'] !== $me): ?>
-                                    <form method="post" class="d-inline" onsubmit="return confirm('Toggle account status for <?= e($u['username']) ?>?');">
+                                    <form method="post" class="d-inline js-toggle-user" data-deactivating="<?= (int)$u['is_active'] === 1 ? '1' : '0' ?>">
                                         <?= csrf_field() ?>
                                         <input type="hidden" name="toggle_active_user" value="1">
                                         <input type="hidden" name="target_id" value="<?= (int)$u['user_id'] ?>">
@@ -617,4 +819,51 @@ $users = $pdo->query(
     });
 })();
 </script>
-<?php require __DIR__ . '/includes/footer.php'; ?>
+
+<!-- Deactivate / reactivate user confirmation (progressive enhancement: without JS the row form submits directly) -->
+<div class="modal fade" id="toggleUserModal" tabindex="-1" aria-labelledby="toggleUserModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="toggleUserModalLabel">Deactivate user</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p id="toggleUserMessage" class="mb-0">Do you want to deactivate this user?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="toggleUserConfirm">Deactivate</button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var modalEl = document.getElementById('toggleUserModal');
+    if (!modalEl) return;
+    var titleEl   = document.getElementById('toggleUserModalLabel');
+    var msgEl     = document.getElementById('toggleUserMessage');
+    var confirmEl = document.getElementById('toggleUserConfirm');
+    var pending   = null;   // the row form waiting for confirmation
+
+    document.querySelectorAll('.js-toggle-user').forEach(function (form) {
+        form.addEventListener('submit', function (ev) {
+            if (!window.bootstrap) return;   // no Bootstrap JS: the form submits normally
+            ev.preventDefault();
+            pending = form;
+            var off = form.getAttribute('data-deactivating') === '1';
+            titleEl.textContent   = off ? 'Deactivate user' : 'Reactivate user';
+            msgEl.textContent     = off ? 'Do you want to deactivate this user?' : 'Do you want to reactivate this user?';
+            confirmEl.textContent = off ? 'Deactivate' : 'Reactivate';
+            confirmEl.className   = off ? 'btn btn-danger' : 'btn btn-success';
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        });
+    });
+
+    confirmEl.addEventListener('click', function () {
+        if (pending) pending.submit();   // submit() does not fire the submit event, so no loop
+    });
+})();
+</script>
+<?php require __DIR__ . '/../includes/footer.php'; ?>

@@ -48,7 +48,7 @@ Quick version:
 1. Copy this folder into `htdocs` (keep the folder name `InventorySystem`).
 2. Create the `inventory_db` database and import the schema (tables, views, triggers).
 3. Start Apache + MySQL, open `http://localhost/InventorySystem`.
-4. Create the first administrator at `setup_admin.php`, then **delete that file**.
+4. Create the first administrator at `admin/setup_admin.php`, then **delete that file**.
 
 ## Roles and access
 
@@ -65,22 +65,16 @@ Admin-only pages call `require_admin()` on the server (hiding menu links is not 
 InventorySystem/
 ├── index.php            Dashboard
 ├── login.php / logout.php
-├── setup_admin.php      One-time first admin (delete after use)
-├── inventory.php        Item list
-├── item_form.php        Add / edit item
-├── categories.php       Categories
-├── stock_in.php         Record stock-in
-├── stock_out.php        Record stock-out
-├── adjustment.php       Record a stock adjustment (admin only)
-├── suppliers.php / supplier_form.php
-├── schools.php / school_form.php
-├── distribution.php     Record a distribution
-├── reports.php          Reports (admin only)
-├── report_export.php    PDF / Excel export (admin only)
-├── admin.php            Users, own password, low-stock alerts (admin only)
+├── items/               inventory.php, item_form.php, categories.php
+├── stock/               stock_in.php, stock_out.php, adjustment.php, distribution.php
+├── partners/            suppliers.php, supplier_form.php, schools.php, school_form.php
+├── reports/             reports.php, report_export.php
+├── admin/               admin.php, setup_admin.php (one-time, delete after use)
 ├── config/              config.php, database.php
 ├── includes/            functions, auth, audit, layout, reports_lib, pdf, ...
-└── assets/              css/style.css, js/*
+├── assets/              css/style.css, js/*
+├── database/            SQL dumps + fix scripts (git-ignored, not served)
+└── docs/                Notes and reference material
 ```
 
 ## Reports & exports
